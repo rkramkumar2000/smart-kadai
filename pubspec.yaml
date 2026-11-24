@@ -41,6 +41,11 @@ dependencies:
   uuid: ^4.6.0
   crypto: ^3.0.8
   intl: ^0.20.3
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  url_launcher: ^6.3.3
+  file_selector: ^1.1.0
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

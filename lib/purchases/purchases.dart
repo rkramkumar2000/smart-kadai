@@ -161,8 +161,9 @@ ON CONFLICT(id) DO UPDATE SET name=excluded.name, phone=excluded.phone,
     String? userId,
     bool updateCosts = true,
   }) {
-    if (lines.isEmpty)
+    if (lines.isEmpty) {
       throw ArgumentError('A purchase needs at least one line');
+    }
     final id = shop.newId();
     final total =
         (lines.fold<double>(0, (s, l) => s + l.total) * 100).roundToDouble() /

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:smart_kadai/app_state.dart';
+import 'package:smart_kadai/auth/auth.dart';
 import 'package:smart_kadai/data/database.dart';
 import 'package:smart_kadai/data/shop_repository.dart';
 import 'package:smart_kadai/main.dart';
@@ -11,6 +12,7 @@ void main() {
   setUp(() {
     final repo = ShopRepository(AppDatabase.inMemory())..seedIfEmpty();
     state = AppState(repo);
+    state.login(state.auth.createUser('Ram', Role.owner, '1234'));
   });
 
   Future<void> pumpApp(WidgetTester t) async {
@@ -75,5 +77,52 @@ void main() {
     expect(ghee.nameTa, 'நெய்');
     expect(ghee.code, 'P0016');
     expect(ghee.variants, hasLength(1));
+  });
+
+  testWidgets('every owner screen opens', (t) async {
+    await pumpApp(t);
+    for (final name in ['Stock', 'Purchases', 'Reports', 'Settings']) {
+      await t.tap(find.text(name).first);
+      await t.pumpAndSettle();
+    }
+    expect(find.text('Back up now'), findsOneWidget);
+  });
+
+  testWidgets('staff do not see purchases, reports or settings', (t) async {
+    state.login(state.auth.createUser('Kumar', Role.staff, '5678'));
+    await pumpApp(t);
+    expect(find.text('Stock'), findsWidgets);
+    expect(find.text('Reports'), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+  });
+
+  testWidgets('lock, then log in again with the PIN', (t) async {
+    await pumpApp(t);
+    await t.tap(find.byTooltip('Lock · பூட்டு'));
+    await t.pumpAndSettle();
+    expect(find.text('Enter your PIN'), findsOneWidget);
+    for (final d in ['1', '2', '3', '4']) {
+      await t.tap(find.text(d));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+    expect(state.user?.name, 'Ram');
+  });
+
+  testWidgets('first run asks for the owner name and PIN twice', (t) async {
+    final repo = ShopRepository(AppDatabase.inMemory())..seedIfEmpty();
+    state = AppState(repo);
+    await pumpApp(t);
+    expect(find.text('Welcome to Smart Kadai'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'Ram');
+    for (var round = 0; round < 2; round++) {
+      for (final d in ['4', '3', '2', '1']) {
+        await t.tap(find.text(d));
+        await t.pump();
+      }
+      await t.pumpAndSettle();
+    }
+    expect(state.user?.isOwner, isTrue);
+    expect(state.auth.verify(state.user!.id, '4321'), isNotNull);
   });
 }

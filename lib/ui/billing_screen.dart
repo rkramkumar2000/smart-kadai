@@ -6,6 +6,7 @@ import '../billing/bill.dart';
 import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../voice/product_matcher.dart';
+import '../printing/bill_printer.dart';
 import 'theme.dart';
 
 /// The counter screen: speak, scan, type or tap items onto the bill.
@@ -40,8 +41,14 @@ class _BillingScreenState extends State<BillingScreen> {
   void _pay(PaymentMode mode) {
     final no = s.completeBill(mode);
     if (no == null) return;
+    final saved = s.lastBill!;
+    if (s.repo.setting('auto_print') == '1') printBill(s, saved);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        action: SnackBarAction(
+          label: 'Print bill',
+          onPressed: () => printBill(s, saved),
+        ),
         content: Text(
           'Bill $no saved (${mode.label}). Stock updated.',
           style: const TextStyle(fontSize: 16),

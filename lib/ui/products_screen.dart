@@ -88,7 +88,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   ),
                   const Spacer(),
                   FilledButton.icon(
-                    onPressed: () => _edit(null),
+                    onPressed: s.user?.canEditProducts == false
+                        ? null
+                        : () => _edit(null),
                     icon: const Icon(Icons.add),
                     label: const Text('Add product'),
                   ),
@@ -166,7 +168,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               rows: [
                                 for (final p in rows)
                                   DataRow(
-                                    onSelectChanged: (_) => _edit(p),
+                                    onSelectChanged:
+                                        s.user?.canEditProducts == false
+                                        ? null
+                                        : (_) => _edit(p),
                                     cells: [
                                       DataCell(Text(p.code)),
                                       DataCell(

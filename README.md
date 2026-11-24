@@ -24,6 +24,24 @@ desktop app comes first; Android follows from the same Flutter code.
   (USB scanners type into the search box), or tap quick items. Shows what was heard, the matched product,
   size, quantity and price, with manual correction. Cash, UPI or credit saves
   the bill and lowers stock.
+- **Login**: the owner sets a 4-digit PIN on first run. Staff logins can bill
+  and see stock, but not profit, prices, purchases, reports or settings.
+  Five wrong PINs lock the login for 30 seconds. The lock button returns to
+  the PIN screen.
+- **Stock**: levels, low and out-of-stock alerts (badge in the menu), stock
+  value, corrections with a reason, history per product, and an order list
+  sent on WhatsApp.
+- **Purchases**: suppliers and what the shop owes them, payments, supplier
+  bills typed in or read from a photo or PDF. Saving raises stock and updates
+  the cost price including GST.
+- **Reading bill photos**: uses Claude (Anthropic API, key in Settings). The
+  owner checks every line before saving.
+- **Reports**: today, last 7 days, this month. Sales, profit, purchases,
+  supplier dues, sales by day, payment split, best sellers. Sales and purchase
+  lines export to Excel (CSV with Tamil names).
+- **Bill printing**: 58 mm or 80 mm thermal roll, or A5, through the Windows
+  print dialog. Optional print on every bill.
+- **Settings**: shop details on the bill, printer, logins, AI key, backup.
 - Offline local SQLite database on the PC.
 
 ## Voice through Chrome (free)
@@ -65,4 +83,8 @@ from the run's **smart-kadai-windows** artifact.
 | `lib/data` | SQLite schema, repository, starter catalogue |
 | `lib/voice` | Tamil transliteration, sound keys, number and unit words, utterance parser, product matcher, speech service interface |
 | `lib/billing` | Bill and bill lines, stock change per line |
-| `lib/ui` | Desktop screens: shell, billing, products, product form |
+| `lib/auth` | Logins, PIN hashing, owner and staff permissions |
+| `lib/purchases` | Suppliers, purchase bills, payments, bill photo reader |
+| `lib/reports` | Sales and purchase figures, CSV export |
+| `lib/printing` | Bill PDF for thermal rolls and A5 |
+| `lib/ui` | Desktop screens: login, shell, billing, products, stock, purchases, reports, settings |

@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'auth/auth.dart';
 import 'billing/bill.dart';
 import 'catalogue/product.dart';
 import 'data/shop_repository.dart';
+import 'purchases/purchases.dart';
+import 'reports/reports.dart';
 import 'voice/product_matcher.dart';
 import 'voice/speech_service.dart';
 import 'voice/utterance_parser.dart';
@@ -13,7 +16,10 @@ import 'voice/utterance_parser.dart';
 /// voice matches waiting for the owner to confirm.
 class AppState extends ChangeNotifier {
   AppState(this.repo, {SpeechService? speech})
-    : speech = speech ?? NoSpeechService() {
+    : speech = speech ?? NoSpeechService(),
+      auth = AuthRepository(repo.dbHandle),
+      purchases = PurchaseRepository(repo),
+      reports = ReportRepository(repo) {
     _reload();
     _sub = this.speech.results.listen(_onSpeech);
     _changeSub = this.speech.changes.listen((_) => notifyListeners());
@@ -21,6 +27,15 @@ class AppState extends ChangeNotifier {
 
   final ShopRepository repo;
   final SpeechService speech;
+  final AuthRepository auth;
+  final PurchaseRepository purchases;
+  final ReportRepository reports;
+
+  /// Who is logged in. Null shows the login screen.
+  AppUser? user;
+
+  /// The last saved bill, for printing.
+  SavedBill? lastBill;
   final UtteranceParser _parser = UtteranceParser();
   late StreamSubscription<SpeechResult> _sub;
   late StreamSubscription<void> _changeSub;
@@ -45,6 +60,35 @@ class AppState extends ChangeNotifier {
   List<Product> get activeProducts =>
       products.where((p) => p.status == ProductStatus.active).toList();
 
+  /// Selling products below their minimum stock.
+  List<Product> get lowStock =>
+      activeProducts.where((p) => p.isLowStock).toList()..sort(
+        (a, b) => (a.stockQty / (a.minStock == 0 ? 1 : a.minStock)).compareTo(
+          b.stockQty / (b.minStock == 0 ? 1 : b.minStock),
+        ),
+      );
+
+  String get shopName => repo.setting('shop_name', 'Smart Kadai');
+
+  // ---------------------------------------------------------------- login
+
+  void login(AppUser u) {
+    user = u;
+    notifyListeners();
+  }
+
+  /// Locks the app; the bill being made is kept for the next login.
+  void lock() {
+    user = null;
+    notifyListeners();
+  }
+
+  /// Call after settings, suppliers or users change.
+  void refresh() {
+    _reload();
+    notifyListeners();
+  }
+
   void _reload() {
     products = repo.loadProducts();
     _matcher = ProductMatcher(products, learnedAliases: repo.loadAliases());
@@ -60,7 +104,7 @@ class AppState extends ChangeNotifier {
   }
 
   void adjustStock(Product p, double delta, String reason) {
-    repo.adjustStock(p.id, delta, reason);
+    repo.adjustStock(p.id, delta, reason, userId: user?.id);
     _reload();
     notifyListeners();
   }
@@ -201,6 +245,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Best catalogue guess for a product name read from a supplier bill,
+  /// for example "Groundnut 10 KG". Null when nothing is close.
+  (Product, ProductVariant?)? guessProduct(String name) {
+    final items = _parser.parse(name);
+    if (items.isEmpty) return null;
+    final m = _matcher.match(items.first);
+    final p =
+        m.product ?? (m.candidates.isEmpty ? null : m.candidates.first.product);
+    if (p == null || m.score < 0.7) return null;
+    final it = items.first;
+    if (it.unit == null) return (p, p.defaultVariant);
+    final pick = ProductMatcher.pickVariant(p, it.quantity, it.unit);
+    return (p, pick.variant);
+  }
+
   void dismiss(VoiceMatch m) {
     pending.remove(m);
     notifyListeners();
@@ -249,7 +308,14 @@ class AppState extends ChangeNotifier {
   /// Saves the bill, lowers stock and starts a new bill. Returns the number.
   int? completeBill(PaymentMode mode) {
     if (bill.lines.isEmpty) return null;
-    final no = repo.saveSale(bill, mode);
+    final no = repo.saveSale(bill, mode, userId: user?.id);
+    lastBill = SavedBill(
+      number: no,
+      bill: bill,
+      mode: mode,
+      at: DateTime.now(),
+      cashier: user?.name ?? '',
+    );
     bill = Bill();
     pending.clear();
     heard = '';
@@ -264,4 +330,19 @@ class AppState extends ChangeNotifier {
     _changeSub.cancel();
     super.dispose();
   }
+}
+
+class SavedBill {
+  SavedBill({
+    required this.number,
+    required this.bill,
+    required this.mode,
+    required this.at,
+    required this.cashier,
+  });
+  final int number;
+  final Bill bill;
+  final PaymentMode mode;
+  final DateTime at;
+  final String cashier;
 }

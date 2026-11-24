@@ -8,6 +8,7 @@ import 'app_state.dart';
 import 'data/database.dart';
 import 'data/shop_repository.dart';
 import 'voice/chrome_voice_bridge.dart';
+import 'ui/login_screen.dart';
 import 'ui/shell.dart';
 import 'ui/theme.dart';
 
@@ -41,7 +42,13 @@ class SmartKadaiApp extends StatelessWidget {
       title: 'Smart Kadai',
       debugShowCheckedModeBanner: false,
       theme: kadaiTheme(),
-      home: AppShell(state: state),
+      // Nobody logged in: the PIN screen. Locking returns here.
+      home: ListenableBuilder(
+        listenable: state,
+        builder: (context, _) => state.user == null
+            ? LoginScreen(key: const ValueKey('login'), state: state)
+            : AppShell(key: ValueKey(state.user!.id), state: state),
+      ),
     );
   }
 }

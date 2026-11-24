@@ -14,6 +14,9 @@ class ShopRepository {
   final AppDatabase _appDb;
   Database get _db => _appDb.db;
 
+  /// The database wrapper, for repositories that need their own queries.
+  AppDatabase get dbHandle => _appDb;
+
   /// The raw database, for the other repositories that share it.
   Database get db => _appDb.db;
   static const _uuid = Uuid();
