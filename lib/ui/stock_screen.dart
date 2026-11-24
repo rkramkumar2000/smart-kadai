@@ -1,11 +1,10 @@
-import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../catalogue/product.dart';
 import '../core/units.dart';
 import 'theme.dart';
+import 'whatsapp.dart';
 
 /// Stock levels, low-stock alerts, corrections with a reason, and history.
 class StockScreen extends StatefulWidget {
@@ -35,26 +34,8 @@ class _StockScreenState extends State<StockScreen> {
     return b.toString();
   }
 
-  Future<void> _share(List<Product> items) async {
-    final text = _orderText(items);
-    await Clipboard.setData(ClipboardData(text: text));
-    final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}');
-    var opened = false;
-    try {
-      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {}
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          opened
-              ? 'Opening WhatsApp. The list is also copied, so you can paste it.'
-              : 'Order list copied. Paste it into WhatsApp.',
-          style: const TextStyle(fontSize: 15),
-        ),
-      ),
-    );
-  }
+  Future<void> _share(List<Product> items) =>
+      sendOnWhatsApp(context, _orderText(items));
 
   Future<void> _correct(Product p) async {
     final countCtl = TextEditingController(text: formatQty(p.stockQty));

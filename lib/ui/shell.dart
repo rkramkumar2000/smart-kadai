@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import 'billing_screen.dart';
+import 'customers_screen.dart';
 import 'products_screen.dart';
 import 'purchases_screen.dart';
 import 'reports_screen.dart';
@@ -25,6 +26,7 @@ class _AppShellState extends State<AppShell> {
   /// Menu items: English, Tamil, icon, owner only.
   static const _all = [
     ('Billing', 'பில்', Icons.point_of_sale_outlined, false),
+    ('Credit book', 'கடன்', Icons.menu_book_outlined, false),
     ('Products', 'பொருட்கள்', Icons.inventory_2_outlined, false),
     ('Stock', 'இருப்பு', Icons.warehouse_outlined, false),
     ('Purchases', 'கொள்முதல்', Icons.local_shipping_outlined, true),
@@ -39,6 +41,7 @@ class _AppShellState extends State<AppShell> {
 
   Widget _screen(String name) => switch (name) {
     'Billing' => BillingScreen(state: widget.state),
+    'Credit book' => CustomersScreen(state: widget.state),
     'Products' => ProductsScreen(state: widget.state),
     'Stock' => StockScreen(state: widget.state),
     'Purchases' => PurchasesScreen(state: widget.state),

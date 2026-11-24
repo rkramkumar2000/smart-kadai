@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'auth/auth.dart';
 import 'billing/bill.dart';
 import 'catalogue/product.dart';
+import 'customers/customers.dart';
 import 'data/shop_repository.dart';
 import 'purchases/purchases.dart';
 import 'reports/reports.dart';
@@ -19,7 +20,9 @@ class AppState extends ChangeNotifier {
     : speech = speech ?? NoSpeechService(),
       auth = AuthRepository(repo.dbHandle),
       purchases = PurchaseRepository(repo),
-      reports = ReportRepository(repo) {
+      reports = ReportRepository(repo),
+      customers = CustomerRepository(repo),
+      expenses = ExpenseRepository(repo) {
     _reload();
     _sub = this.speech.results.listen(_onSpeech);
     _changeSub = this.speech.changes.listen((_) => notifyListeners());
@@ -30,6 +33,11 @@ class AppState extends ChangeNotifier {
   final AuthRepository auth;
   final PurchaseRepository purchases;
   final ReportRepository reports;
+  final CustomerRepository customers;
+  final ExpenseRepository expenses;
+
+  /// Bills put on hold while another customer is served.
+  final List<Bill> held = [];
 
   /// Who is logged in. Null shows the login screen.
   AppUser? user;
@@ -298,6 +306,40 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Puts the current bill aside to serve the next customer.
+  void holdBill() {
+    if (bill.lines.isEmpty) return;
+    held.add(bill);
+    bill = Bill();
+    pending.clear();
+    heard = '';
+    notifyListeners();
+  }
+
+  /// Brings a held bill back. The current bill, if any, is held instead.
+  void resumeBill(Bill b) {
+    held.remove(b);
+    if (bill.lines.isNotEmpty) held.add(bill);
+    bill = b;
+    notifyListeners();
+  }
+
+  void setCustomer(Customer? c) {
+    bill.customerId = c?.id;
+    bill.customerName = c?.name ?? '';
+    bill.customerPhone = c?.phone ?? '';
+    notifyListeners();
+  }
+
+  void setDiscount(double rupees) {
+    bill.discount = rupees < 0
+        ? 0
+        : rupees > bill.subtotal
+        ? bill.subtotal
+        : rupees;
+    notifyListeners();
+  }
+
   void clearBill() {
     bill = Bill();
     pending.clear();
@@ -308,6 +350,7 @@ class AppState extends ChangeNotifier {
   /// Saves the bill, lowers stock and starts a new bill. Returns the number.
   int? completeBill(PaymentMode mode) {
     if (bill.lines.isEmpty) return null;
+    if (mode == PaymentMode.credit && bill.customerId == null) return null;
     final no = repo.saveSale(bill, mode, userId: user?.id);
     lastBill = SavedBill(
       number: no,

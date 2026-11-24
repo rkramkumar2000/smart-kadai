@@ -125,8 +125,20 @@ const Map<String, Unit> abbreviationUnits = {
   'doz': Unit.dozen,
 };
 
-/// Words that only join items: "and", "apram" (then), "um".
+/// Words that only join items: "and", "apram" (then), "um", and "ok",
+/// which owners say before each item: "ok hamam 1 packet ok salt 1 kg".
 const List<String> _joinWords = [
+  'ok',
+  'okay',
+  'okey',
+  'okk',
+  'okie',
+  'next',
+  'sari',
+  'ஓகே',
+  'ஓக்கே',
+  'ஓகோ',
+  'சரி',
   'and',
   'then',
   'also',

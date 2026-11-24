@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../app_state.dart';
+import '../billing/bill.dart';
 import '../core/units.dart';
 
 /// Paper sizes for the bill: thermal rolls or a normal A5 sheet.
@@ -35,6 +36,7 @@ class ShopHeader {
     this.phone = '',
     this.gstin = '',
     this.footer = 'Thank you. Visit again!',
+    this.upiId = '',
   });
 
   final String name;
@@ -42,6 +44,9 @@ class ShopHeader {
   final String phone;
   final String gstin;
   final String footer;
+
+  /// Printed as a QR code on credit bills so the customer can pay later.
+  final String upiId;
 }
 
 /// Builds the customer bill as a PDF. Product names are printed in English,
@@ -49,8 +54,9 @@ class ShopHeader {
 Future<Uint8List> buildBillPdf(
   SavedBill b,
   ShopHeader shop,
-  BillPaper paper,
-) async {
+  BillPaper paper, {
+  double? balanceDue,
+}) async {
   final doc = pw.Document();
   final narrow = paper == BillPaper.roll58;
   final small = pw.TextStyle(fontSize: narrow ? 7 : 8);
@@ -113,6 +119,8 @@ Future<Uint8List> buildBillPdf(
             ],
           ),
           if (b.cashier.isNotEmpty) pw.Text('By ${b.cashier}', style: small),
+          if (b.bill.customerName.isNotEmpty)
+            pw.Text('Customer: ${_latin(b.bill.customerName)}', style: body),
           pw.Divider(thickness: 0.5),
           for (final l in b.bill.lines)
             pw.Padding(
@@ -136,6 +144,22 @@ Future<Uint8List> buildBillPdf(
               ),
             ),
           pw.Divider(thickness: 0.5),
+          if (b.bill.discount > 0) ...[
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Subtotal', style: body),
+                pw.Text(money(b.bill.subtotal), style: body),
+              ],
+            ),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Discount', style: body),
+                pw.Text('- ${money(b.bill.discount)}', style: body),
+              ],
+            ),
+          ],
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -159,6 +183,26 @@ Future<Uint8List> buildBillPdf(
             '${b.bill.lines.length} items - Paid by ${b.mode.label}',
             style: small,
           ),
+          if (balanceDue != null && balanceDue > 0)
+            pw.Text('Total due now: ${money(balanceDue)}', style: bold),
+          if (shop.upiId.isNotEmpty && b.mode == PaymentMode.credit) ...[
+            pw.SizedBox(height: 6),
+            pw.Center(
+              child: pw.BarcodeWidget(
+                barcode: pw.Barcode.qrCode(),
+                data:
+                    'upi://pay?pa=${Uri.encodeComponent(shop.upiId)}'
+                    '&pn=${Uri.encodeComponent(shop.name)}&cu=INR',
+                width: narrow ? 70 : 90,
+                height: narrow ? 70 : 90,
+              ),
+            ),
+            pw.Text(
+              'Pay by UPI: ${shop.upiId}',
+              textAlign: pw.TextAlign.center,
+              style: small,
+            ),
+          ],
           pw.SizedBox(height: 6),
           pw.Text(shop.footer, textAlign: pw.TextAlign.center, style: small),
         ],
@@ -177,11 +221,44 @@ Future<bool> printBill(AppState s, SavedBill b) {
     phone: s.repo.setting('shop_phone'),
     gstin: s.repo.setting('shop_gstin'),
     footer: s.repo.setting('bill_footer', 'Thank you. Visit again!'),
+    upiId: s.repo.setting('upi_id'),
   );
+  final cid = b.bill.customerId;
+  final due = cid == null ? null : s.customers.byId(cid)?.balance;
   final paper = BillPaper.fromCode(s.repo.setting('bill_paper', '80mm'));
   return Printing.layoutPdf(
     name: 'Bill ${b.number}',
     format: paper.format,
-    onLayout: (_) => buildBillPdf(b, shop, paper),
+    onLayout: (_) => buildBillPdf(b, shop, paper, balanceDue: due),
   );
+}
+
+/// Printer fonts have only English letters; other letters become "?".
+String _latin(String t) => t.replaceAll(RegExp(r'[^\x20-\x7E]'), '?');
+
+/// The bill as a WhatsApp message, in English and Tamil.
+String billText(SavedBill b, String shopName) {
+  String money(double v) => v == v.roundToDouble()
+      ? '₹${v.toStringAsFixed(0)}'
+      : '₹${v.toStringAsFixed(2)}';
+  final d = b.at;
+  final out = StringBuffer()
+    ..writeln('*$shopName*')
+    ..writeln(
+      'Bill ${b.number} · ${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}',
+    )
+    ..writeln();
+  for (final l in b.bill.lines) {
+    out.writeln(
+      '${l.product.nameEn} (${l.product.nameTa}) ${l.unitLabel} ${l.quantityLabel} = ${money(l.total)}',
+    );
+  }
+  out.writeln();
+  if (b.bill.discount > 0) {
+    out.writeln('Discount: -${money(b.bill.discount)}');
+  }
+  out
+    ..writeln('*Total · மொத்தம்: ${money(b.bill.total)}* (${b.mode.label})')
+    ..write('நன்றி · Thank you');
+  return out.toString();
 }

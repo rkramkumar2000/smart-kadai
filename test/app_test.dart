@@ -81,7 +81,13 @@ void main() {
 
   testWidgets('every owner screen opens', (t) async {
     await pumpApp(t);
-    for (final name in ['Stock', 'Purchases', 'Reports', 'Settings']) {
+    for (final name in [
+      'Credit book',
+      'Stock',
+      'Purchases',
+      'Reports',
+      'Settings',
+    ]) {
       await t.tap(find.text(name).first);
       await t.pumpAndSettle();
     }

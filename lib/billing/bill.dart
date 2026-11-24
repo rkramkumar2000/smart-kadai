@@ -75,9 +75,24 @@ class BillLine {
 class Bill {
   final List<BillLine> lines = [];
 
-  double get total =>
+  /// Rupees taken off the whole bill.
+  double discount = 0;
+
+  /// The customer the bill is for. Needed for credit (kadan) bills.
+  String? customerId;
+  String customerName = '';
+  String customerPhone = '';
+
+  /// Sum of the lines before discount.
+  double get subtotal =>
       (lines.fold<double>(0, (s, l) => s + l.total) * 100).roundToDouble() /
       100;
+
+  /// What the customer pays.
+  double get total {
+    final t = subtotal - discount;
+    return t <= 0 ? 0 : (t * 100).roundToDouble() / 100;
+  }
 
   /// Adds [line], merging with an identical product and variant already on
   /// the bill so repeated scans increase the count.

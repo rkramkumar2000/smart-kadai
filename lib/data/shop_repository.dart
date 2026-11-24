@@ -276,9 +276,21 @@ VALUES (?,?,?,?,?,?,?,?,?)''',
       final saleId = newId();
       final now = DateTime.now().toIso8601String();
       _db.execute(
-        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id) VALUES (?,?,?,?,?,?)',
-        [saleId, billNo, now, bill.total, mode.code, userId],
+        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id, customer_id, discount) VALUES (?,?,?,?,?,?,?,?)',
+        [
+          saleId, billNo, now, bill.total, mode.code, userId, //
+          bill.customerId, bill.discount,
+        ],
       );
+      if (mode == PaymentMode.credit) {
+        if (bill.customerId == null) {
+          throw StateError('A credit bill needs a customer');
+        }
+        _db.execute(
+          'UPDATE customers SET balance = ROUND(balance + ?, 2), updated_at = ? WHERE id = ?',
+          [bill.total, now, bill.customerId],
+        );
+      }
       final stmt = _db.prepare('''
 INSERT INTO sale_items (id, sale_id, product_id, variant_id, count,
   unit_price, line_total, stock_delta, entered_by, spoken_text, cost_total)

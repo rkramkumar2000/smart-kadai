@@ -16,7 +16,7 @@ class AppDatabase {
 
   final Database db;
 
-  static const _schemaVersion = 3;
+  static const _schemaVersion = 4;
 
   void _migrate() {
     final v = db.userVersion;
@@ -185,6 +185,45 @@ ALTER TABLE stock_movements ADD COLUMN note TEXT NOT NULL DEFAULT '';
 ALTER TABLE stock_movements ADD COLUMN user_id TEXT;
 CREATE INDEX idx_sales_created ON sales(created_at);
 CREATE INDEX idx_purchases_created ON purchases(invoice_date);
+''');
+    }
+    if (v < 4) {
+      // Customer credit book (kadan), bill discount and shop expenses.
+      db.execute('''
+CREATE TABLE customers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
+  balance REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE customer_payments (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL REFERENCES customers(id),
+  amount REAL NOT NULL,
+  mode TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  user_id TEXT
+);
+
+CREATE TABLE expenses (
+  id TEXT PRIMARY KEY,
+  day TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount REAL NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  user_id TEXT
+);
+CREATE INDEX idx_expenses_day ON expenses(day);
+
+ALTER TABLE sales ADD COLUMN customer_id TEXT;
+ALTER TABLE sales ADD COLUMN discount REAL NOT NULL DEFAULT 0;
+CREATE INDEX idx_sales_customer ON sales(customer_id);
 ''');
     }
     db.userVersion = _schemaVersion;

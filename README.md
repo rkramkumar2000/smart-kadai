@@ -41,7 +41,16 @@ desktop app comes first; Android follows from the same Flutter code.
   lines export to Excel (CSV with Tamil names).
 - **Bill printing**: 58 mm or 80 mm thermal roll, or A5, through the Windows
   print dialog. Optional print on every bill.
-- **Settings**: shop details on the bill, printer, logins, AI key, backup.
+- **Settings**: shop details on the bill, UPI ID, printer, logins, AI key,
+  backup.
+- **Credit book (kadan)**: customers, what each owes, credit bills, money
+  received, account history and WhatsApp reminders.
+- **Billing extras**: customer on the bill (F4), discount in rupees or %
+  (F6), hold a bill and serve the next customer (F8), UPI QR with the bill
+  amount, and the bill sent to the customer on WhatsApp.
+- **Expenses**: rent, electricity, salary and more, so Reports show real
+  profit.
+- Voice: say "ok" between items: "ok hamam 1 packet ok salt 1 kg".
 - Offline local SQLite database on the PC.
 
 ## Voice through Chrome (free)
@@ -84,6 +93,7 @@ from the run's **smart-kadai-windows** artifact.
 | `lib/voice` | Tamil transliteration, sound keys, number and unit words, utterance parser, product matcher, speech service interface |
 | `lib/billing` | Bill and bill lines, stock change per line |
 | `lib/auth` | Logins, PIN hashing, owner and staff permissions |
+| `lib/customers` | Credit book and expenses |
 | `lib/purchases` | Suppliers, purchase bills, payments, bill photo reader |
 | `lib/reports` | Sales and purchase figures, CSV export |
 | `lib/printing` | Bill PDF for thermal rolls and A5 |

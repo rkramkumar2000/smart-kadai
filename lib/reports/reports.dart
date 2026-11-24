@@ -52,6 +52,9 @@ class SalesReport {
     required this.purchaseBills,
     required this.supplierDue,
     required this.voiceShare,
+    this.expenses = 0,
+    this.discounts = 0,
+    this.customerDue = 0,
   });
 
   final DateTime from;
@@ -71,7 +74,20 @@ class SalesReport {
   /// Share of bill lines entered by voice, 0 to 1.
   final double voiceShare;
 
+  /// Rent, electricity, salary and other running costs in the period.
+  final double expenses;
+
+  /// Discounts given on bills in the period.
+  final double discounts;
+
+  /// What all customers owe the shop today (credit book).
+  final double customerDue;
+
+  /// Sales minus what the goods cost.
   double get profit => sales - cost;
+
+  /// Profit after running costs.
+  double get netProfit => profit - expenses;
 }
 
 /// Sales and purchase figures for the Reports screen and Excel export.
@@ -143,6 +159,19 @@ GROUP BY i.product_id ORDER BY amt DESC LIMIT 10''',
         .select('SELECT COALESCE(SUM(balance),0) AS b FROM suppliers')
         .first['b'];
     final lines = cost['lines'] as int;
+    final exp = _db.select(
+      'SELECT COALESCE(SUM(amount),0) AS t FROM expenses WHERE day >= ? AND day < ?',
+      [f, t],
+    ).first['t'];
+    final disc = _db.select(
+      'SELECT COALESCE(SUM(discount),0) AS d FROM sales WHERE created_at >= ? AND created_at < ?',
+      [f, t],
+    ).first['d'];
+    final owed = _db
+        .select(
+          'SELECT COALESCE(SUM(balance),0) AS b FROM customers WHERE balance > 0',
+        )
+        .first['b'];
     return SalesReport(
       from: from,
       to: to,
@@ -156,6 +185,9 @@ GROUP BY i.product_id ORDER BY amt DESC LIMIT 10''',
       purchaseBills: buy['n'] as int,
       supplierDue: (due as num).toDouble(),
       voiceShare: lines == 0 ? 0 : (cost['v'] as num) / lines,
+      expenses: (exp as num).toDouble(),
+      discounts: (disc as num).toDouble(),
+      customerDue: (owed as num).toDouble(),
     );
   }
 

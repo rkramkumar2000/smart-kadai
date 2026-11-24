@@ -27,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'shop_address': TextEditingController(text: s.repo.setting('shop_address')),
     'shop_phone': TextEditingController(text: s.repo.setting('shop_phone')),
     'shop_gstin': TextEditingController(text: s.repo.setting('shop_gstin')),
+    'upi_id': TextEditingController(text: s.repo.setting('upi_id')),
     'bill_footer': TextEditingController(
       text: s.repo.setting('bill_footer', 'Thank you. Visit again!'),
     ),
@@ -252,6 +253,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 12),
                     Expanded(child: _field('shop_gstin', 'GSTIN (if any)')),
                   ],
+                ),
+                _field(
+                  'upi_id',
+                  'Shop UPI ID, like ramstores@okaxis (for the pay QR code)',
                 ),
                 _field('bill_footer', 'Line at the bottom of the bill'),
                 Align(

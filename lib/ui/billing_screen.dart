@@ -5,9 +5,12 @@ import '../app_state.dart';
 import '../billing/bill.dart';
 import '../catalogue/product.dart';
 import '../core/units.dart';
-import '../voice/product_matcher.dart';
 import '../printing/bill_printer.dart';
+import '../voice/product_matcher.dart';
+import 'customers_screen.dart';
 import 'theme.dart';
+import 'upi_qr.dart';
+import 'whatsapp.dart';
 
 /// The counter screen: speak, scan, type or tap items onto the bill.
 class BillingScreen extends StatefulWidget {
@@ -38,24 +41,175 @@ class _BillingScreenState extends State<BillingScreen> {
     _inputFocus.requestFocus();
   }
 
-  void _pay(PaymentMode mode) {
+  Future<void> _pay(PaymentMode mode) async {
+    if (s.bill.lines.isEmpty) return;
+    if (mode == PaymentMode.credit && s.bill.customerId == null) {
+      final c = await pickCustomer(context, s);
+      if (c == null) return;
+      s.setCustomer(c);
+    }
+    final upiId = s.repo.setting('upi_id');
+    if (mode == PaymentMode.upi && upiId.isNotEmpty) {
+      if (!mounted) return;
+      final paid = await showUpiQr(
+        context,
+        upiId: upiId,
+        payee: s.shopName,
+        amount: s.bill.total,
+        note: s.shopName,
+      );
+      if (!paid) return;
+    }
     final no = s.completeBill(mode);
-    if (no == null) return;
+    if (no == null || !mounted) return;
     final saved = s.lastBill!;
     if (s.repo.setting('auto_print') == '1') printBill(s, saved);
-    ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
       SnackBar(
-        action: SnackBarAction(
-          label: 'Print bill',
-          onPressed: () => printBill(s, saved),
-        ),
-        content: Text(
-          'Bill $no saved (${mode.label}). Stock updated.',
-          style: const TextStyle(fontSize: 16),
+        duration: const Duration(seconds: 8),
+        content: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Bill $no saved (${mode.label}'
+                '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}). '
+                'Stock updated.',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                printBill(s, saved);
+              },
+              child: const Text('Print bill'),
+            ),
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentSnackBar();
+                sendOnWhatsApp(
+                  context,
+                  billText(saved, s.shopName),
+                  phone: saved.bill.customerPhone,
+                );
+              },
+              child: const Text('WhatsApp bill'),
+            ),
+          ],
         ),
       ),
     );
     _inputFocus.requestFocus();
+  }
+
+  Future<void> _discount() async {
+    final c = TextEditingController(
+      text: s.bill.discount == 0 ? '' : formatQty(s.bill.discount),
+    );
+    final v = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discount · தள்ளுபடி'),
+        content: SizedBox(
+          width: 340,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bill ${rupees(s.bill.subtotal)}'),
+              const SizedBox(height: 10),
+              TextField(
+                controller: c,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Rupees off, or a % like 5%',
+                ),
+                onSubmitted: (t) => Navigator.pop(context, _parseOff(t)),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 0.0),
+            child: const Text('No discount'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _parseOff(c.text)),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    c.dispose();
+    if (v != null) s.setDiscount(v);
+    _inputFocus.requestFocus();
+  }
+
+  double _parseOff(String t) {
+    final x = t.trim();
+    if (x.endsWith('%')) {
+      final p = double.tryParse(x.substring(0, x.length - 1).trim()) ?? 0;
+      return (s.bill.subtotal * p / 100).roundToDouble();
+    }
+    return double.tryParse(x) ?? 0;
+  }
+
+  Future<void> _customer() async {
+    final c = await pickCustomer(context, s);
+    if (c != null) s.setCustomer(c);
+    _inputFocus.requestFocus();
+  }
+
+  /// Customer, discount and held bills, just above the total.
+  Widget _billOptions() {
+    final b = s.bill;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        InputChip(
+          avatar: const Icon(Icons.person_outline),
+          label: Text(
+            b.customerName.isEmpty ? 'Customer (F4)' : b.customerName,
+            style: const TextStyle(fontSize: 15),
+          ),
+          onPressed: _customer,
+          onDeleted: b.customerName.isEmpty ? null : () => s.setCustomer(null),
+        ),
+        InputChip(
+          avatar: const Icon(Icons.percent),
+          label: Text(
+            b.discount == 0 ? 'Discount (F6)' : '${rupees(b.discount)} off',
+            style: const TextStyle(fontSize: 15),
+          ),
+          onPressed: b.lines.isEmpty ? null : _discount,
+          onDeleted: b.discount == 0 ? null : () => s.setDiscount(0),
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.pause_circle_outline),
+          label: const Text('Hold bill (F8)', style: TextStyle(fontSize: 15)),
+          onPressed: b.lines.isEmpty ? null : s.holdBill,
+        ),
+        for (final (i, h) in s.held.indexed)
+          ActionChip(
+            backgroundColor: KadaiColors.warnTint,
+            avatar: const Icon(Icons.play_arrow),
+            label: Text(
+              'Held ${i + 1}: '
+              '${h.customerName.isEmpty ? '${h.lines.length} items' : h.customerName}'
+              ' · ${rupees(h.total)}',
+              style: const TextStyle(fontSize: 15),
+            ),
+            onPressed: () => s.resumeBill(h),
+          ),
+      ],
+    );
   }
 
   void _voice() {
@@ -82,6 +236,9 @@ class _BillingScreenState extends State<BillingScreen> {
         const SingleActivator(LogicalKeyboardKey.f12): () =>
             _pay(PaymentMode.cash),
         const SingleActivator(LogicalKeyboardKey.escape): s.clearBill,
+        const SingleActivator(LogicalKeyboardKey.f4): _customer,
+        const SingleActivator(LogicalKeyboardKey.f6): _discount,
+        const SingleActivator(LogicalKeyboardKey.f8): s.holdBill,
       },
       child: ListenableBuilder(
         listenable: s,
@@ -209,7 +366,9 @@ class _BillingScreenState extends State<BillingScreen> {
         ],
         const SizedBox(height: 12),
         Expanded(child: Card(child: _lines())),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
+        _billOptions(),
+        const SizedBox(height: 10),
         _totalBar(),
       ],
     );
@@ -342,6 +501,11 @@ class _BillingScreenState extends State<BillingScreen> {
                     height: 1.1,
                   ),
                 ),
+                if (s.bill.discount > 0)
+                  Text(
+                    '${rupees(s.bill.subtotal)} − ${rupees(s.bill.discount)} off',
+                    style: const TextStyle(color: KadaiColors.quiet),
+                  ),
               ],
             ),
             const SizedBox(width: 16),
