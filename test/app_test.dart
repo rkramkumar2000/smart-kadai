@@ -72,11 +72,24 @@ void main() {
     );
     await t.tap(find.text('Save'));
     await t.pumpAndSettle();
+    expect(find.text('Enter a selling price.'), findsOneWidget);
+    await t.enterText(
+      find.byWidgetPredicate(
+        (w) =>
+            w is TextField &&
+            (w.decoration?.labelText ?? '').startsWith('Selling price per'),
+      ),
+      '600',
+    );
+    await t.tap(find.text('Save'));
+    await t.pumpAndSettle();
 
     final ghee = state.products.firstWhere((p) => p.nameEn == 'Ghee');
     expect(ghee.nameTa, 'நெய்');
     expect(ghee.code, 'P0016');
     expect(ghee.variants, hasLength(1));
+    expect(ghee.variants.single.sellingPrice, 600);
+    expect(ghee.nameTanglish, 'ney');
   });
 
   testWidgets('every owner screen opens', (t) async {

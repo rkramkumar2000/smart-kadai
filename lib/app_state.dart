@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'auth/auth.dart';
 import 'billing/bill.dart';
 import 'catalogue/product.dart';
+import 'catalogue/product_import.dart';
+import 'core/units.dart';
 import 'customers/customers.dart';
 import 'data/shop_repository.dart';
 import 'purchases/purchases.dart';
@@ -112,6 +114,53 @@ class AppState extends ChangeNotifier {
 
   void saveProduct(Product p) {
     repo.saveProduct(p);
+    _reload();
+    notifyListeners();
+  }
+
+  /// Reads a product sheet (CSV or Excel) against the current catalogue.
+  ImportResult readProductSheet(List<List<String>> rows) {
+    var n = int.parse(repo.nextProductCode().substring(1));
+    return buildImport(
+      rows,
+      repo.loadProducts(),
+      newId: repo.newId,
+      nextCode: () => 'P${(n++).toString().padLeft(4, '0')}',
+    );
+  }
+
+  /// Saves imported products. Stock given for a product already in the shop
+  /// is recorded as an "Opening stock" correction. With [hideOthers], the
+  /// products not in the sheet (such as the starter samples) stop selling.
+  void importProducts(ImportResult r, {bool hideOthers = false}) {
+    final before = {for (final p in repo.loadProducts()) p.id: p};
+    repo.transaction(() {
+      for (final p in r.products) {
+        repo.saveProduct(p);
+        final old = before[p.id];
+        if (old != null) {
+          final delta = roundQty(p.stockQty - old.stockQty);
+          if (delta != 0) {
+            repo.moveStock(
+              p.id,
+              delta,
+              'CORRECTION',
+              null,
+              note: 'Opening stock',
+              userId: user?.id,
+            );
+          }
+        }
+      }
+      if (hideOthers) {
+        final keep = {for (final p in r.products) p.id};
+        for (final p in before.values) {
+          if (!keep.contains(p.id) && p.status == ProductStatus.active) {
+            repo.saveProduct(p.copyWith(status: ProductStatus.inactive));
+          }
+        }
+      }
+    });
     _reload();
     notifyListeners();
   }

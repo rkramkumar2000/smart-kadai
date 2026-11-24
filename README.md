@@ -43,6 +43,8 @@ desktop app comes first; Android follows from the same Flutter code.
   print dialog. Optional print on every bill.
 - **Settings**: shop details on the bill, UPI ID, printer, logins, AI key,
   backup.
+- **Import products from Excel**: download the sample sheet, fill one row per
+  size, and import .xlsx or CSV. Same English name updates the product.
 - **Credit book (kadan)**: customers, what each owes, credit bills, money
   received, account history and WhatsApp reminders.
 - **Billing extras**: customer on the bill (F4), discount in rupees or %

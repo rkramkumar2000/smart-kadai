@@ -343,6 +343,11 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?)''');
 
   /// Runs [body] so that all its writes are saved together or not at all.
   void transaction(void Function() body) {
+    // Already inside a transaction: the outer one commits or rolls back.
+    if (!_db.autocommit) {
+      body();
+      return;
+    }
     _db.execute('BEGIN');
     try {
       body();

@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../app_state.dart';
 import '../catalogue/product.dart';
 import 'product_form.dart';
+import 'product_import_dialog.dart';
 import 'theme.dart';
 
 /// Product catalogue: search in English, Tamil, Tanglish or by barcode,
@@ -87,6 +88,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     style: const TextStyle(color: KadaiColors.quiet),
                   ),
                   const Spacer(),
+                  if (s.user?.canEditProducts != false) ...[
+                    TextButton.icon(
+                      onPressed: () => saveProductTemplate(context),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Sample sheet'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => importProductsFlow(context, s),
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Import from Excel'),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   FilledButton.icon(
                     onPressed: s.user?.canEditProducts == false
                         ? null

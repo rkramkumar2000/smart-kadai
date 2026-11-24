@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../data/shop_repository.dart';
+import '../voice/phonetic.dart';
 import 'theme.dart';
 
 /// Add or edit one product and the units it is sold in.
@@ -123,6 +124,16 @@ class _ProductFormState extends State<ProductForm> {
   static String _num(double? v) => v == null || v == 0 ? '' : formatQty(v);
   static double _parse(String s) => double.tryParse(s.trim()) ?? 0;
 
+  /// Category, brand, barcode, description and status are hidden until
+  /// asked for, so adding a product needs only the name, price and size.
+  late bool _more =
+      widget.product != null &&
+      (widget.product!.category.isNotEmpty ||
+          widget.product!.brand.isNotEmpty ||
+          (widget.product!.barcode ?? '').isNotEmpty ||
+          widget.product!.description.isNotEmpty ||
+          widget.product!.status != ProductStatus.active);
+
   void _addVariant() {
     setState(() {
       _variants.add(
@@ -199,19 +210,52 @@ class _ProductFormState extends State<ProductForm> {
       variants[0] = variants[0].copyWith(isDefault: true);
     }
 
+    // Fill what the owner left empty: the price per stock unit comes from the
+    // usual size, a size without a price gets it from the stock-unit price,
+    // and Tanglish comes from the Tamil (or English) name.
+    var price = _parse(_price.text);
+    var cost = _parse(_cost.text);
+    final usual = variants.isEmpty
+        ? null
+        : variants.firstWhere((v) => v.isDefault, orElse: () => variants[0]);
+    if (usual != null && usual.stockFactor > 0) {
+      if (price == 0) price = roundQty(usual.sellingPrice / usual.stockFactor);
+      if (cost == 0) cost = roundQty(usual.purchasePrice / usual.stockFactor);
+    }
+    for (final (i, v) in variants.indexed) {
+      variants[i] = v.copyWith(
+        sellingPrice: v.sellingPrice == 0
+            ? roundQty(price * v.stockFactor)
+            : v.sellingPrice,
+        purchasePrice: v.purchasePrice == 0
+            ? roundQty(cost * v.stockFactor)
+            : v.purchasePrice,
+      );
+    }
+    if (price == 0 && variants.every((v) => v.sellingPrice == 0)) {
+      setState(() => _error = 'Enter a selling price.');
+      return;
+    }
+    var tanglish = _tanglish.text.trim();
+    if (tanglish.isEmpty) {
+      tanglish = _ta.text.trim().isNotEmpty
+          ? transliterateTamil(_ta.text.trim())
+          : _en.text.trim();
+    }
+
     final base = widget.product;
     final product = Product(
       id: id,
       code: _code,
       nameEn: _en.text.trim(),
       nameTa: _ta.text.trim(),
-      nameTanglish: _tanglish.text.trim(),
+      nameTanglish: tanglish,
       category: _category.text.trim(),
       brand: _brand.text.trim(),
       description: _desc.text.trim(),
       barcode: _barcode.text.trim(),
-      purchasePrice: _parse(_cost.text),
-      sellingPrice: _parse(_price.text),
+      purchasePrice: cost,
+      sellingPrice: price,
       minStock: _parse(_min.text),
       stockUnit: _stockUnit,
       stockQty: base?.stockQty ?? _parse(_stock.text),
@@ -272,31 +316,11 @@ class _ProductFormState extends State<ProductForm> {
                       _row([
                         _field(_en, 'English name *', required: true),
                         _field(_ta, 'Tamil name · தமிழ் பெயர்'),
-                        _field(_tanglish, 'Tanglish name (how it is said)'),
-                      ]),
-                      _row([
-                        Autocomplete<String>(
-                          initialValue: _category.value,
-                          optionsBuilder: (v) => widget.categories.where(
-                            (c) =>
-                                c.toLowerCase().contains(v.text.toLowerCase()),
-                          ),
-                          onSelected: (c) => _category.text = c,
-                          fieldViewBuilder: (context, c, f, _) {
-                            c.addListener(() => _category.text = c.text);
-                            return TextFormField(
-                              controller: c,
-                              focusNode: f,
-                              decoration: const InputDecoration(
-                                labelText: 'Category',
-                              ),
-                            );
-                          },
+                        _field(
+                          _tanglish,
+                          'Tanglish (optional, filled for you)',
                         ),
-                        _field(_brand, 'Brand'),
-                        _field(_barcode, 'Barcode'),
                       ]),
-                      _field(_desc, 'Description', lines: 2),
                       const SizedBox(height: 12),
                       _row([
                         DropdownButtonFormField<Unit>(
@@ -344,20 +368,66 @@ class _ProductFormState extends State<ProductForm> {
                                 ),
                                 child: Text(_stockUnit.format(p!.stockQty)),
                               ),
-                        DropdownButtonFormField<ProductStatus>(
-                          isExpanded: true,
-                          initialValue: _status,
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
-                          ),
-                          items: [
-                            for (final s in ProductStatus.values)
-                              DropdownMenuItem(value: s, child: Text(s.label)),
-                          ],
-                          onChanged: (s) =>
-                              setState(() => _status = s ?? _status),
-                        ),
+                        const SizedBox.shrink(),
                       ]),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => setState(() => _more = !_more),
+                          icon: Icon(
+                            _more ? Icons.expand_less : Icons.expand_more,
+                          ),
+                          label: Text(
+                            _more ? 'Fewer details' : 'More details: category, brand, barcode, status',
+                          ),
+                        ),
+                      ),
+                      if (_more) ...[
+                        _row([
+                          Autocomplete<String>(
+                            initialValue: _category.value,
+                            optionsBuilder: (v) => widget.categories.where(
+                              (c) => c.toLowerCase().contains(
+                                v.text.toLowerCase(),
+                              ),
+                            ),
+                            onSelected: (c) => _category.text = c,
+                            fieldViewBuilder: (context, c, f, _) {
+                              c.addListener(() => _category.text = c.text);
+                              return TextFormField(
+                                controller: c,
+                                focusNode: f,
+                                decoration: const InputDecoration(
+                                  labelText: 'Category',
+                                ),
+                              );
+                            },
+                          ),
+                          _field(_brand, 'Brand'),
+                          _field(_barcode, 'Barcode'),
+                        ]),
+                        _field(_desc, 'Description', lines: 2),
+                        _row([
+                          DropdownButtonFormField<ProductStatus>(
+                            isExpanded: true,
+                            initialValue: _status,
+                            decoration: const InputDecoration(
+                              labelText: 'Status',
+                            ),
+                            items: [
+                              for (final s in ProductStatus.values)
+                                DropdownMenuItem(
+                                  value: s,
+                                  child: Text(s.label),
+                                ),
+                            ],
+                            onChanged: (s) =>
+                                setState(() => _status = s ?? _status),
+                          ),
+                          const SizedBox.shrink(),
+                          const SizedBox.shrink(),
+                        ]),
+                      ],
                       const SizedBox(height: 16),
                       Row(
                         children: [
