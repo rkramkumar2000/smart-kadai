@@ -16,12 +16,14 @@ class AppState extends ChangeNotifier {
     : speech = speech ?? NoSpeechService() {
     _reload();
     _sub = this.speech.results.listen(_onSpeech);
+    _changeSub = this.speech.changes.listen((_) => notifyListeners());
   }
 
   final ShopRepository repo;
   final SpeechService speech;
   final UtteranceParser _parser = UtteranceParser();
   late StreamSubscription<SpeechResult> _sub;
+  late StreamSubscription<void> _changeSub;
 
   List<Product> products = [];
   late ProductMatcher _matcher;
@@ -32,7 +34,12 @@ class AppState extends ChangeNotifier {
 
   /// Last words heard or typed, shown on screen.
   String heard = '';
-  bool listening = false;
+
+  /// True while the microphone is on.
+  bool get listening => speech.isListening;
+
+  /// True when the voice helper is connected and ready.
+  bool get voiceReady => speech.isAvailable;
   ({int bills, double total}) today = (bills: 0, total: 0);
 
   List<Product> get activeProducts =>
@@ -60,29 +67,67 @@ class AppState extends ChangeNotifier {
 
   // ---------------------------------------------------------------- voice
 
+  /// Mic button and F2: opens the voice window if it is not connected yet,
+  /// otherwise turns listening on or off.
   Future<void> toggleListening() async {
-    if (!speech.isAvailable) return;
-    listening = !listening;
-    notifyListeners();
-    listening ? await speech.start() : await speech.stop();
+    if (!speech.isAvailable) {
+      await speech.open();
+      return;
+    }
+    listening ? await speech.stop() : await speech.start();
   }
 
   void _onSpeech(SpeechResult r) {
-    heard = r.text;
-    if (r.isFinal) {
-      handleSpoken(r.text, EntryMethod.voice);
-    } else {
+    if (!r.isFinal) {
+      heard = r.text;
       notifyListeners();
+      return;
     }
+    final alts = r.alternatives.isEmpty ? [r.text] : r.alternatives;
+    final best = chooseAlternative(alts);
+    final (sure, unsure) = handleSpoken(best, EntryMethod.voice);
+    repo.logVoice(
+      service: speech.runtimeType.toString(),
+      heard: r.text,
+      alternatives: alts,
+      usedText: best,
+      sure: sure,
+      unsure: unsure,
+      result: bill.lines.map((l) => l.product.nameEn).join(', '),
+    );
+  }
+
+  /// Chrome gives up to three guesses of what was said. Use the one whose
+  /// items match the catalogue best, preferring its first guess on a tie.
+  String chooseAlternative(List<String> alternatives) {
+    var best = alternatives.first;
+    var bestScore = -1.0;
+    for (final a in alternatives) {
+      final items = _parser.parse(a);
+      if (items.isEmpty) continue;
+      var score = 0.0;
+      for (final item in items) {
+        final m = _matcher.match(item);
+        score += m.needsConfirmation ? m.score * 0.5 : 1 + m.score;
+      }
+      if (score > bestScore + 0.0001) {
+        bestScore = score;
+        best = a;
+      }
+    }
+    return best;
   }
 
   /// Turns spoken (or typed) words into bill lines. Sure matches go straight
   /// on the bill; unsure ones wait in [pending] for the owner to pick.
-  void handleSpoken(String text, EntryMethod method) {
+  /// Returns how many items were sure and unsure.
+  (int, int) handleSpoken(String text, EntryMethod method) {
     heard = text;
+    var sure = 0, unsure = 0;
     for (final item in _parser.parse(text)) {
       final m = _matcher.match(item);
       if (!m.needsConfirmation && m.product != null) {
+        sure++;
         bill.add(
           BillLine(
             product: m.product!,
@@ -93,10 +138,12 @@ class AppState extends ChangeNotifier {
           ),
         );
       } else {
+        unsure++;
         pending.add(m);
       }
     }
     notifyListeners();
+    return (sure, unsure);
   }
 
   /// The search box: a barcode adds that item, anything else is read like
@@ -214,6 +261,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _sub.cancel();
+    _changeSub.cancel();
     super.dispose();
   }
 }
