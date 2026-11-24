@@ -1,0 +1,107 @@
+import 'package:sqlite3/sqlite3.dart';
+
+/// Opens the shop's local SQLite database and keeps its tables up to date.
+///
+/// The database on the counter PC is the source of truth, so billing works
+/// without internet. Cloud sync is added in a later phase.
+class AppDatabase {
+  AppDatabase._(this.db) {
+    db.execute('PRAGMA foreign_keys = ON;');
+    db.execute('PRAGMA journal_mode = WAL;');
+    _migrate();
+  }
+
+  factory AppDatabase.open(String path) => AppDatabase._(sqlite3.open(path));
+  factory AppDatabase.inMemory() => AppDatabase._(sqlite3.openInMemory());
+
+  final Database db;
+
+  static const _schemaVersion = 1;
+
+  void _migrate() {
+    final v = db.userVersion;
+    if (v < 1) {
+      db.execute('''
+CREATE TABLE products (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name_en TEXT NOT NULL,
+  name_ta TEXT NOT NULL DEFAULT '',
+  name_tanglish TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  brand TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  barcode TEXT,
+  purchase_price REAL NOT NULL DEFAULT 0,
+  selling_price REAL NOT NULL DEFAULT 0,
+  min_stock REAL NOT NULL DEFAULT 0,
+  stock_unit TEXT NOT NULL,
+  stock_qty REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'ACTIVE',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_products_barcode ON products(barcode);
+
+CREATE TABLE product_variants (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  unit TEXT NOT NULL,
+  quantity REAL NOT NULL,
+  stock_factor REAL NOT NULL,
+  selling_price REAL NOT NULL,
+  purchase_price REAL NOT NULL DEFAULT 0,
+  barcode TEXT,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_variants_product ON product_variants(product_id);
+CREATE INDEX idx_variants_barcode ON product_variants(barcode);
+
+-- Spoken phrases the owner has corrected, so voice learns each shop's words.
+CREATE TABLE voice_aliases (
+  phrase_key TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  hits INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE sales (
+  id TEXT PRIMARY KEY,
+  bill_no INTEGER NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  total REAL NOT NULL,
+  payment_mode TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PAID'
+);
+
+CREATE TABLE sale_items (
+  id TEXT PRIMARY KEY,
+  sale_id TEXT NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+  product_id TEXT NOT NULL REFERENCES products(id),
+  variant_id TEXT REFERENCES product_variants(id),
+  count REAL NOT NULL,
+  unit_price REAL NOT NULL,
+  line_total REAL NOT NULL,
+  stock_delta REAL NOT NULL,
+  entered_by TEXT NOT NULL,
+  spoken_text TEXT
+);
+
+-- Every change to stock, so stock can always be explained and rebuilt.
+CREATE TABLE stock_movements (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id),
+  delta REAL NOT NULL,
+  type TEXT NOT NULL,
+  ref_id TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_movements_product ON stock_movements(product_id);
+''');
+    }
+    db.userVersion = _schemaVersion;
+  }
+
+  void close() => db.close();
+}
