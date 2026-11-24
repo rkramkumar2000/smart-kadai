@@ -194,6 +194,9 @@ class AppState extends ChangeNotifier {
             spokenText: item.text,
           ),
         );
+      } else if (item.nameWords.join().length <= 2) {
+        // A stray sound such as "ji" or "um": not worth a question.
+        continue;
       } else {
         unsure++;
         pending.add(m);

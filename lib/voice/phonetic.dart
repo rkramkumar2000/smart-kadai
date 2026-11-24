@@ -9,7 +9,9 @@ library;
 const _vowels = {
   'அ': 'a', 'ஆ': 'aa', 'இ': 'i', 'ஈ': 'ii', 'உ': 'u', 'ஊ': 'uu', //
   'எ': 'e', 'ஏ': 'ee', 'ஐ': 'ai', 'ஒ': 'o', 'ஓ': 'oo', 'ஔ': 'au',
-  'ஃ': 'k',
+  // Aytham: in English words written in Tamil it marks "f" (ஃபி = fi),
+  // which the sound key folds into p, so it adds no letter of its own.
+  'ஃ': '',
 };
 
 const _consonants = {
@@ -64,10 +66,18 @@ String wordKey(String word) {
   w = w.replaceAll(_nonLetters, '');
   if (w.isEmpty) return w;
   if (RegExp(r'^[0-9.]+$').hasMatch(w)) return w;
+  // English "magic e": rice = rais, white = vait, as Tamil speakers say it.
+  w = w.replaceAllMapped(
+    RegExp(r'([^aeiou])i([bcdfgklmnpstvz])e$'),
+    (m) => '${m[1]}ai${m[2] == 'c' ? 's' : m[2]}',
+  );
   const pairs = [
     ['zh', 'l'], ['nj', 'n'], ['ch', 's'], ['sh', 's'], ['th', 't'], //
     ['dh', 'd'], ['ph', 'p'], ['bh', 'b'], ['kh', 'k'], ['gh', 'g'],
-    ['ck', 'k'], ['x', 'ks'], ['q', 'k'], ['c', 'k'], ['w', 'v'],
+    ['ck', 'k'], ['x', 'ks'], ['q', 'k'],
+    // Soft c and g in English names: rice = rais, detergent = titarsent.
+    ['ce', 'se'], ['ci', 'si'], ['gen', 'jen'],
+    ['c', 'k'], ['w', 'v'],
     ['z', 's'], ['j', 's'], ['g', 'k'], ['d', 't'], ['b', 'p'],
     ['f', 'p'], ['ee', 'i'], ['oo', 'u'], ['y', 'i'],
   ];
@@ -103,3 +113,16 @@ List<String> splitWords(String text) {
 /// Sound key for a whole phrase, words joined by single spaces.
 String phraseKey(String text) =>
     splitWords(text).map(wordKey).where((w) => w.isNotEmpty).join(' ');
+
+/// Consonant outline of a sound key: vowels, v and h removed. English names
+/// spoken in Tamil change the vowels and add some ("ground" is heard as
+/// kiravunt, "tomato" as tomitu) but keep the consonants, so outlines match.
+String consonantOutline(String key) {
+  final w = key.replaceAll(RegExp('[aeiouvh]'), '');
+  final sb = StringBuffer();
+  for (var i = 0; i < w.length; i++) {
+    if (i > 0 && w[i] == w[i - 1]) continue;
+    sb.write(w[i]);
+  }
+  return sb.toString();
+}

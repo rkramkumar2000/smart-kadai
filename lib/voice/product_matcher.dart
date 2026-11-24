@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../catalogue/product.dart';
 import '../core/units.dart';
 import 'fuzzy.dart';
@@ -7,9 +9,11 @@ import 'utterance_parser.dart';
 /// A name a product can be recognised by: English, Tamil, Tanglish, or an
 /// alias learned from the owner's corrections.
 class _NameEntry {
-  _NameEntry(this.product, this.words);
+  _NameEntry(this.product, this.words)
+    : outline = [for (final w in words) consonantOutline(w)];
   final Product product;
   final List<String> words;
+  final List<String> outline;
 }
 
 class ProductCandidate {
@@ -99,8 +103,15 @@ class ProductMatcher {
     if (learned != null) {
       best[learned.id] = ProductCandidate(learned, 1.0);
     }
+    final spokenOutline = [for (final w in spokenWords) consonantOutline(w)];
+    // Outlines of very short words ("egg" = k) match too much to trust.
+    final useOutline =
+        spokenWords.join().length >= 4 && spokenOutline.join().length >= 2;
     for (final e in _entries) {
-      final s = phraseSimilarity(spokenWords, e.words);
+      var s = phraseSimilarity(spokenWords, e.words);
+      if (useOutline && e.outline.join().length >= 2) {
+        s = math.max(s, phraseSimilarity(spokenOutline, e.outline) * 0.96);
+      }
       final cur = best[e.product.id];
       if (cur == null || s > cur.score) {
         best[e.product.id] = ProductCandidate(e.product, s);
