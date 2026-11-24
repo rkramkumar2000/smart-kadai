@@ -52,20 +52,19 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   void _voice() {
-    if (!s.speech.isAvailable) {
+    if (!s.voiceReady) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Voice service is not set up yet. Type what was said in the box '
-            '(for example "rendu kadalai mittai") to try voice billing.',
+            'Opening the voice window in Chrome. The first time, click Allow '
+            'for the microphone.',
             style: TextStyle(fontSize: 15),
           ),
         ),
       );
-      _inputFocus.requestFocus();
-      return;
     }
     s.toggleListening();
+    _inputFocus.requestFocus();
   }
 
   @override
@@ -143,6 +142,25 @@ class _BillingScreenState extends State<BillingScreen> {
                   ],
                 ),
               ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Icon(
+              Icons.circle,
+              size: 10,
+              color: s.voiceReady ? KadaiColors.green : KadaiColors.warn,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              !s.voiceReady
+                  ? 'Voice window is closed. Click Speak to open it in Chrome.'
+                  : s.listening
+                  ? 'Listening through Chrome. Speak naturally; items appear as you finish each one.'
+                  : 'Voice ready. Press F2 or Speak.',
+              style: const TextStyle(fontSize: 13, color: KadaiColors.quiet),
             ),
           ],
         ),

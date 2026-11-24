@@ -16,7 +16,7 @@ class AppDatabase {
 
   final Database db;
 
-  static const _schemaVersion = 1;
+  static const _schemaVersion = 2;
 
   void _migrate() {
     final v = db.userVersion;
@@ -98,6 +98,23 @@ CREATE TABLE stock_movements (
   created_at TEXT NOT NULL
 );
 CREATE INDEX idx_movements_product ON stock_movements(product_id);
+''');
+    }
+    if (v < 2) {
+      db.execute('''
+-- Every phrase heard by voice, what it became, and whether the owner had to
+-- fix it. Used to judge how well the speech service handles Tanglish.
+CREATE TABLE voice_log (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  service TEXT NOT NULL,
+  heard TEXT NOT NULL,
+  alternatives TEXT NOT NULL DEFAULT '',
+  used_text TEXT NOT NULL,
+  sure_items INTEGER NOT NULL DEFAULT 0,
+  unsure_items INTEGER NOT NULL DEFAULT 0,
+  result TEXT NOT NULL DEFAULT ''
+);
 ''');
     }
     db.userVersion = _schemaVersion;

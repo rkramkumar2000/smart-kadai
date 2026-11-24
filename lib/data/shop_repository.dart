@@ -185,6 +185,37 @@ ON CONFLICT(phrase_key) DO UPDATE SET product_id=excluded.product_id,
     );
   }
 
+  // -------------------------------------------------------------- voice log
+
+  void logVoice({
+    required String service,
+    required String heard,
+    required List<String> alternatives,
+    required String usedText,
+    required int sure,
+    required int unsure,
+    required String result,
+  }) {
+    _db.execute(
+      '''
+INSERT INTO voice_log (id, created_at, service, heard, alternatives,
+  used_text, sure_items, unsure_items, result)
+VALUES (?,?,?,?,?,?,?,?,?)''',
+      [
+        newId(), DateTime.now().toIso8601String(), service, heard, //
+        alternatives.join(' | '), usedText, sure, unsure, result,
+      ],
+    );
+  }
+
+  /// Recent voice phrases, newest first.
+  List<Map<String, Object?>> recentVoiceLog({int limit = 200}) => _db
+      .select('SELECT * FROM voice_log ORDER BY created_at DESC LIMIT ?', [
+        limit,
+      ])
+      .map((r) => Map<String, Object?>.from(r))
+      .toList();
+
   // ------------------------------------------------------------------ sales
 
   /// Saves the bill and lowers stock for every line, all or nothing.
