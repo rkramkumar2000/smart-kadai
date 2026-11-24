@@ -16,7 +16,7 @@ class AppDatabase {
 
   final Database db;
 
-  static const _schemaVersion = 2;
+  static const _schemaVersion = 3;
 
   void _migrate() {
     final v = db.userVersion;
@@ -115,6 +115,76 @@ CREATE TABLE voice_log (
   unsure_items INTEGER NOT NULL DEFAULT 0,
   result TEXT NOT NULL DEFAULT ''
 );
+''');
+    }
+    if (v < 3) {
+      db.execute('''
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  pin_hash TEXT NOT NULL,
+  pin_salt TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE suppliers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  gstin TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
+  balance REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE purchases (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL REFERENCES suppliers(id),
+  invoice_no TEXT NOT NULL DEFAULT '',
+  invoice_date TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  total REAL NOT NULL,
+  paid REAL NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'MANUAL',
+  image_path TEXT,
+  user_id TEXT
+);
+
+CREATE TABLE purchase_items (
+  id TEXT PRIMARY KEY,
+  purchase_id TEXT NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+  product_id TEXT NOT NULL REFERENCES products(id),
+  variant_id TEXT REFERENCES product_variants(id),
+  count REAL NOT NULL,
+  unit_cost REAL NOT NULL,
+  gst_percent REAL NOT NULL DEFAULT 0,
+  line_total REAL NOT NULL,
+  stock_delta REAL NOT NULL
+);
+
+CREATE TABLE supplier_payments (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL REFERENCES suppliers(id),
+  amount REAL NOT NULL,
+  mode TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+ALTER TABLE sales ADD COLUMN user_id TEXT;
+ALTER TABLE sale_items ADD COLUMN cost_total REAL NOT NULL DEFAULT 0;
+ALTER TABLE stock_movements ADD COLUMN note TEXT NOT NULL DEFAULT '';
+ALTER TABLE stock_movements ADD COLUMN user_id TEXT;
+CREATE INDEX idx_sales_created ON sales(created_at);
+CREATE INDEX idx_purchases_created ON purchases(invoice_date);
 ''');
     }
     db.userVersion = _schemaVersion;

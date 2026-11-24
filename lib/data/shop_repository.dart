@@ -13,6 +13,9 @@ class ShopRepository {
 
   final AppDatabase _appDb;
   Database get _db => _appDb.db;
+
+  /// The raw database, for the other repositories that share it.
+  Database get db => _appDb.db;
   static const _uuid = Uuid();
 
   String newId() => _uuid.v4();
@@ -91,7 +94,7 @@ class ShopRepository {
 
   /// Inserts or updates a product and replaces its variants.
   void saveProduct(Product p) {
-    _transaction(() {
+    transaction(() {
       _db.execute(
         '''
 INSERT INTO products (id, code, name_en, name_ta, name_tanglish, category,
@@ -146,10 +149,52 @@ ON CONFLICT(id) DO UPDATE SET unit=excluded.unit, quantity=excluded.quantity,
     });
   }
 
-  /// Sets the stock of a product and records why.
-  void adjustStock(String productId, double delta, String reason) {
-    _transaction(() => _moveStock(productId, delta, reason, null));
+  /// Changes stock by [delta] and records why ("Spoiled", "Counted again").
+  void adjustStock(
+    String productId,
+    double delta,
+    String reason, {
+    String? userId,
+  }) {
+    transaction(
+      () => moveStock(
+        productId,
+        delta,
+        'CORRECTION',
+        null,
+        note: reason,
+        userId: userId,
+      ),
+    );
   }
+
+  /// Stock changes for one product, newest first.
+  List<StockMovement> stockHistory(String productId, {int limit = 100}) => _db
+      .select(
+        'SELECT * FROM stock_movements WHERE product_id = ? ORDER BY created_at DESC LIMIT ?',
+        [productId, limit],
+      )
+      .map(
+        (r) => StockMovement(
+          delta: (r['delta'] as num).toDouble(),
+          type: r['type'] as String,
+          note: r['note'] as String,
+          at: DateTime.parse(r['created_at'] as String),
+        ),
+      )
+      .toList();
+
+  // --------------------------------------------------------------- settings
+
+  String setting(String key, [String fallback = '']) {
+    final r = _db.select('SELECT value FROM settings WHERE key = ?', [key]);
+    return r.isEmpty ? fallback : r.first['value'] as String;
+  }
+
+  void setSetting(String key, String value) => _db.execute(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [key, value],
+  );
 
   /// True when another product or variant already uses [barcode].
   bool barcodeInUse(String barcode, {String? exceptProductId}) {
@@ -220,27 +265,28 @@ VALUES (?,?,?,?,?,?,?,?,?)''',
 
   /// Saves the bill and lowers stock for every line, all or nothing.
   /// Returns the bill number.
-  int saveSale(Bill bill, PaymentMode mode) {
+  int saveSale(Bill bill, PaymentMode mode, {String? userId}) {
     late int billNo;
-    _transaction(() {
+    transaction(() {
       final last = _db.select('SELECT MAX(bill_no) AS n FROM sales').first['n'];
       billNo = ((last as int?) ?? 0) + 1;
       final saleId = newId();
       final now = DateTime.now().toIso8601String();
       _db.execute(
-        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode) VALUES (?,?,?,?,?)',
-        [saleId, billNo, now, bill.total, mode.code],
+        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id) VALUES (?,?,?,?,?,?)',
+        [saleId, billNo, now, bill.total, mode.code, userId],
       );
       final stmt = _db.prepare('''
 INSERT INTO sale_items (id, sale_id, product_id, variant_id, count,
-  unit_price, line_total, stock_delta, entered_by, spoken_text)
-VALUES (?,?,?,?,?,?,?,?,?,?)''');
+  unit_price, line_total, stock_delta, entered_by, spoken_text, cost_total)
+VALUES (?,?,?,?,?,?,?,?,?,?,?)''');
       for (final l in bill.lines) {
         stmt.execute([
           newId(), saleId, l.product.id, l.variant?.id, l.count, //
           l.unitPrice, l.total, l.stockDelta, l.enteredBy.name, l.spokenText,
+          l.costTotal,
         ]);
-        _moveStock(l.product.id, -l.stockDelta, 'SALE', saleId);
+        moveStock(l.product.id, -l.stockDelta, 'SALE', saleId, userId: userId);
       }
       stmt.close();
     });
@@ -259,18 +305,29 @@ VALUES (?,?,?,?,?,?,?,?,?,?)''');
 
   // ---------------------------------------------------------------- helpers
 
-  void _moveStock(String productId, double delta, String type, String? ref) {
+  /// Changes a product's stock and records the change. Call inside
+  /// [transaction].
+  void moveStock(
+    String productId,
+    double delta,
+    String type,
+    String? ref, {
+    String note = '',
+    String? userId,
+  }) {
+    final at = DateTime.now().toIso8601String();
     _db.execute(
       'UPDATE products SET stock_qty = ROUND(stock_qty + ?, 4), updated_at = ? WHERE id = ?',
-      [delta, DateTime.now().toIso8601String(), productId],
+      [delta, at, productId],
     );
     _db.execute(
-      'INSERT INTO stock_movements (id, product_id, delta, type, ref_id, created_at) VALUES (?,?,?,?,?,?)',
-      [newId(), productId, delta, type, ref, DateTime.now().toIso8601String()],
+      'INSERT INTO stock_movements (id, product_id, delta, type, ref_id, created_at, note, user_id) VALUES (?,?,?,?,?,?,?,?)',
+      [newId(), productId, delta, type, ref, at, note, userId],
     );
   }
 
-  void _transaction(void Function() body) {
+  /// Runs [body] so that all its writes are saved together or not at all.
+  void transaction(void Function() body) {
     _db.execute('BEGIN');
     try {
       body();
@@ -283,4 +340,17 @@ VALUES (?,?,?,?,?,?,?,?,?,?)''');
 
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
+}
+
+class StockMovement {
+  StockMovement({
+    required this.delta,
+    required this.type,
+    required this.note,
+    required this.at,
+  });
+  final double delta;
+  final String type;
+  final String note;
+  final DateTime at;
 }

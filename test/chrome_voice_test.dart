@@ -118,4 +118,5 @@ void main() {
   });
 }
 
-Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 80));
+Future<void> _settle() =>
+    Future<void>.delayed(const Duration(milliseconds: 80));

@@ -39,6 +39,8 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.6
   uuid: ^4.6.0
+  crypto: ^3.0.8
+  intl: ^0.20.3
 
 dev_dependencies:
   flutter_test:

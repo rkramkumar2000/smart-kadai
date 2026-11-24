@@ -37,6 +37,12 @@ class BillLine {
 
   double get total => (unitPrice * count * 100).roundToDouble() / 100;
 
+  /// What this line cost the shop, for profit reports.
+  double get costTotal =>
+      ((variant?.purchasePrice ?? product.purchasePrice) * count * 100)
+          .roundToDouble() /
+      100;
+
   /// How much the product's stock goes down, in its stock unit.
   /// 1 x Groundnut 250 GRAM with stock in KG reduces stock by 0.25.
   double get stockDelta => roundQty(count * (variant?.stockFactor ?? 1));
