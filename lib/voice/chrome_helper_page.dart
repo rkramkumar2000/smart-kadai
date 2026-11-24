@@ -91,7 +91,7 @@ const chromeHelperPage = r'''<!doctype html>
     r.continuous = true;
     r.interimResults = true;
     r.maxAlternatives = 3;
-    r.onstart = () => { running = true; send({type: 'state', listening: true}); };
+    r.onstart = () => { running = true; setStatus('Listening · கேட்கிறது', 'ok'); send({type: 'state', listening: true}); };
     r.onresult = (ev) => {
       let interim = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -113,6 +113,11 @@ const chromeHelperPage = r'''<!doctype html>
         wanted = false;
       } else if (ev.error === 'network') {
         setStatus('No internet for speech', 'bad');
+      } else if (ev.error === 'audio-capture') {
+        setStatus('No microphone found', 'bad');
+        wanted = false;
+      } else if (ev.error === 'no-speech') {
+        setStatus('Nothing heard. Is the mic muted?', 'bad');
       }
       send({type: 'error', error: ev.error});
     };

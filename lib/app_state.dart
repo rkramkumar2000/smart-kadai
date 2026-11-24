@@ -63,6 +63,9 @@ class AppState extends ChangeNotifier {
 
   /// True when the voice helper is connected and ready.
   bool get voiceReady => speech.isAvailable;
+
+  /// Why voice is not working, in plain words, or null.
+  String? get voiceProblem => speech.problem;
   ({int bills, double total}) today = (bills: 0, total: 0);
 
   List<Product> get activeProducts =>

@@ -107,6 +107,27 @@ void main() {
     await ws.close();
   });
 
+  test('a blocked or missing microphone is explained in plain words', () async {
+    final ws = await connectHelper();
+    expect(state.voiceProblem, isNull);
+    ws.add(jsonEncode({'type': 'error', 'error': 'not-allowed'}));
+    await _settle();
+    expect(state.voiceProblem, contains('blocked'));
+    ws.add(jsonEncode({'type': 'error', 'error': 'audio-capture'}));
+    await _settle();
+    expect(state.voiceProblem, contains('No microphone'));
+    ws.add(jsonEncode({'type': 'state', 'listening': true}));
+    await _settle();
+    expect(state.voiceProblem, isNull);
+    await ws.close();
+  });
+
+  test('a second copy says another Smart Kadai is open', () async {
+    final second = ChromeVoiceBridge(port: bridge.pageUrl.port);
+    await expectLater(second.serve(), throwsA(isA<SocketException>()));
+    expect(second.problem, contains('Another Smart Kadai'));
+  });
+
   test('rejects pages from other websites', () async {
     expect(
       () => WebSocket.connect(

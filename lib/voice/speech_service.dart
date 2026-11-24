@@ -41,6 +41,9 @@ abstract class SpeechService {
 
   Future<void> start();
   Future<void> stop();
+
+  /// Why voice is not working right now, in plain words. Null when fine.
+  String? get problem => null;
 }
 
 /// Used until a real service is configured. The owner can still type or
@@ -65,6 +68,9 @@ class NoSpeechService implements SpeechService {
 
   @override
   Future<void> start() async {}
+
+  @override
+  String? get problem => null;
 
   @override
   Future<void> stop() async {}

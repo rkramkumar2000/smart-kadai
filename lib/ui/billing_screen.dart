@@ -315,16 +315,29 @@ class _BillingScreenState extends State<BillingScreen> {
             Icon(
               Icons.circle,
               size: 10,
-              color: s.voiceReady ? KadaiColors.green : KadaiColors.warn,
+              color: s.voiceProblem != null
+                  ? KadaiColors.danger
+                  : s.voiceReady
+                  ? KadaiColors.green
+                  : KadaiColors.warn,
             ),
             const SizedBox(width: 6),
-            Text(
-              !s.voiceReady
-                  ? 'Voice window is closed. Click Speak to open it in Chrome.'
-                  : s.listening
-                  ? 'Listening through Chrome. Speak naturally; items appear as you finish each one.'
-                  : 'Voice ready. Press F2 or Speak.',
-              style: const TextStyle(fontSize: 13, color: KadaiColors.quiet),
+            Expanded(
+              child: Text(
+                s.voiceProblem ??
+                    (!s.voiceReady
+                        ? 'Voice window is closed. Click Speak to open it in Chrome.'
+                        : s.listening
+                        ? 'Listening through Chrome. Speak naturally; items appear as you finish each one.'
+                        : 'Voice ready. Press F2 or Speak.'),
+                style: TextStyle(
+                  fontSize: s.voiceProblem != null ? 15 : 13,
+                  fontWeight: s.voiceProblem != null ? FontWeight.w600 : null,
+                  color: s.voiceProblem != null
+                      ? KadaiColors.danger
+                      : KadaiColors.quiet,
+                ),
+              ),
             ),
           ],
         ),

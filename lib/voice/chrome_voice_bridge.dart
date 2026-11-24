@@ -21,13 +21,40 @@ class ChromeVoiceBridge implements SpeechService {
   final _results = StreamController<SpeechResult>.broadcast();
   final _changes = StreamController<void>.broadcast();
   bool _listening = false;
+  String? _problem;
+
+  /// Set when the port is taken, usually by another Smart Kadai still open.
+  bool portBusy = false;
+
+  @override
+  String? get problem => portBusy
+      ? 'Another Smart Kadai is already open, so voice is off in this one. '
+            'Close all Smart Kadai windows (check the taskbar) and start again.'
+      : _problem;
+
+  static String? _explain(String code) => switch (code) {
+    'not-allowed' || 'service-not-allowed' =>
+      'The microphone is blocked. In the Chrome voice window, click the icon '
+          'left of the address, set Microphone to Allow, then click Speak.',
+    'audio-capture' =>
+      'No microphone found. Plug in a microphone or headset and click Speak.',
+    'network' => 'Chrome needs internet for speech. Check the connection.',
+    'no-speech' =>
+      'Nothing was heard. Check the microphone is not muted and speak closer.',
+    _ => null,
+  };
 
   Uri get pageUrl => Uri.parse('http://127.0.0.1:${_server?.port ?? port}/');
 
   /// Starts the local server. Safe to call more than once.
   Future<void> serve() async {
     if (_server != null) return;
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+    try {
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+    } on SocketException {
+      portBusy = true;
+      rethrow;
+    }
     _server!.listen(_handle, onError: (_) {});
   }
 
@@ -75,6 +102,7 @@ class ChromeVoiceBridge implements SpeechService {
     }
     if (decoded is! Map) return;
     final m = decoded;
+    if (m['type'] == 'partial' || m['type'] == 'final') _problem = null;
     switch (m['type']) {
       case 'partial':
         final text = '${m['text'] ?? ''}'.trim();
@@ -98,7 +126,14 @@ class ChromeVoiceBridge implements SpeechService {
         }
       case 'state':
         _listening = m['listening'] == true;
+        if (_listening) _problem = null;
         _changes.add(null);
+      case 'error':
+        final p = _explain('${m['error'] ?? ''}');
+        if (p != null) {
+          _problem = p;
+          _changes.add(null);
+        }
     }
   }
 
@@ -130,6 +165,8 @@ class ChromeVoiceBridge implements SpeechService {
   /// Opens the helper in a small Chrome app window.
   @override
   Future<void> open() async {
+    // The other copy owns the voice window; opening it would send speech there.
+    if (portBusy) return;
     await serve();
     final url = pageUrl.toString();
     final chrome = findChrome();
