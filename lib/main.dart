@@ -20,11 +20,10 @@ Future<void> main() async {
   final repo = ShopRepository(db)..seedIfEmpty();
 
   // Free voice through Chrome's speech recognition. The helper window opens
-  // with the app; if Chrome is missing, billing still works by tap and scan.
+  // after login; if Chrome is missing, billing still works by tap and scan.
   final voice = ChromeVoiceBridge();
   try {
     await voice.serve();
-    await voice.open();
   } on SocketException {
     // Port busy (another copy running): voice stays off in this copy.
   }

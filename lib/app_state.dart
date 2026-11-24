@@ -83,9 +83,11 @@ class AppState extends ChangeNotifier {
 
   // ---------------------------------------------------------------- login
 
+  /// Logs in and opens the voice window, so it never covers the PIN screen.
   void login(AppUser u) {
     user = u;
     notifyListeners();
+    if (!speech.isAvailable) speech.open();
   }
 
   /// Locks the app; the bill being made is kept for the next login.
