@@ -481,6 +481,11 @@ class _BillingScreenState extends State<BillingScreen> {
                             'Listening. Speak naturally; items appear as you finish each one.',
                             'கேட்கிறது. சாதாரணமாக பேசுங்கள்; ஒவ்வொரு பொருளும் சொன்னதும் சேரும்.',
                           )
+                        : isPhone
+                        ? t(
+                            'Voice ready. Press the mic and speak.',
+                            'குரல் தயார். மைக்கை அழுத்தி பேசுங்கள்.',
+                          )
                         : t(
                             'Voice ready. Press F2 or Speak.',
                             'குரல் தயார். F2 அல்லது பேசு அழுத்துங்கள்.',
