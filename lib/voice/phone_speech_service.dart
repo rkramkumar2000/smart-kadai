@@ -28,6 +28,7 @@ class PhoneSpeechService implements SpeechService {
   String? _problem;
   String _locale = 'ta_IN';
   Timer? _restart;
+  Timer? _watchdog;
 
   @override
   bool get isAvailable => _ready;
@@ -64,18 +65,18 @@ class PhoneSpeechService implements SpeechService {
           'Allow the microphone for Smart Kadai in phone Settings, and keep '
           'the Google app installed. · மைக்கை அனுமதியுங்கள்.';
     } else {
-      final locales = await _stt.locales();
-      final ta = locales.where(
-        (l) => l.localeId.toLowerCase().startsWith('ta'),
-      );
-      if (ta.isNotEmpty) {
-        _locale = ta.first.localeId;
-        _problem = null;
-      } else {
-        _locale = 'en_IN';
-        _problem =
-            'Tamil speech is not installed. Open Google app → Settings → '
-            'Voice → Languages and add தமிழ் (இந்தியா).';
+      // Many phones list only a few languages here even though Google's
+      // online recogniser understands Tamil, so ta_IN is tried anyway. If
+      // the phone refuses it, the error handler falls back to en_IN.
+      _problem = null;
+      try {
+        final locales = await _stt.locales();
+        final ta = locales.where(
+          (l) => l.localeId.toLowerCase().startsWith('ta'),
+        );
+        _locale = ta.isNotEmpty ? ta.first.localeId : 'ta_IN';
+      } catch (_) {
+        _locale = 'ta_IN';
       }
       try {
         await _tts.awaitSpeakCompletion(true);
@@ -91,6 +92,12 @@ class PhoneSpeechService implements SpeechService {
     if (!_ready) return;
     _wanted = true;
     _changed();
+    // Some phones stop listening without saying so. Check every 2 seconds
+    // and start again while the owner has the mic on.
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_wanted && !_speaking && !_stt.isListening) _listen();
+    });
     await _listen();
   }
 
@@ -98,12 +105,16 @@ class PhoneSpeechService implements SpeechService {
   Future<void> stop() async {
     _wanted = false;
     _restart?.cancel();
+    _watchdog?.cancel();
     await _stt.stop();
     _changed();
   }
 
+  bool _starting = false;
+
   Future<void> _listen() async {
-    if (!_wanted || _speaking || _stt.isListening) return;
+    if (!_wanted || _speaking || _starting || _stt.isListening) return;
+    _starting = true;
     try {
       await _stt.listen(
         onResult: _onResult,
@@ -118,6 +129,8 @@ class PhoneSpeechService implements SpeechService {
       );
     } catch (_) {
       _again();
+    } finally {
+      _starting = false;
     }
   }
 
@@ -160,11 +173,14 @@ class PhoneSpeechService implements SpeechService {
             'Allow the microphone for Smart Kadai in phone Settings. · '
             'மைக்கை அனுமதியுங்கள்.';
         _wanted = false;
+        _watchdog?.cancel();
       case 'error_network' || 'error_network_timeout' || 'error_server':
         _problem =
             'No internet for voice. Turn on mobile data, or install offline '
             'Tamil speech in the Google app. · இணையம் இல்லை.';
       case 'error_language_not_supported' || 'error_language_unavailable':
+        // Listen in Indian English instead, and say how to add Tamil.
+        _locale = 'en_IN';
         _problem =
             'Tamil speech is not installed. Open Google app → Settings → '
             'Voice → Languages and add தமிழ் (இந்தியா).';
