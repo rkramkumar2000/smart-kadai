@@ -8,6 +8,8 @@ import 'package:smart_kadai/customers/customers.dart';
 import 'package:smart_kadai/data/database.dart';
 import 'package:smart_kadai/data/shop_repository.dart';
 import 'package:smart_kadai/main.dart';
+import 'package:smart_kadai/printing/bill_printer.dart';
+import 'package:smart_kadai/voice/speech_service.dart';
 import 'package:smart_kadai/voice/voice_commands.dart';
 
 /// Ram: separate retail and wholesale rates, and a button on the bill.
@@ -95,6 +97,20 @@ void main() {
     expect(g.variants.map((v) => v.wholesalePrice), [132, 68, 35]);
   });
 
+  test('the customer never sees or hears "wholesale"', () {
+    final speech = _Speech();
+    final v = AppState(s.repo, speech: speech);
+    v.handleSpoken('sugar 1 kg', EntryMethod.voice);
+    v.runCommand(VoiceCommand.wholesale);
+    expect(v.bill.total, 40);
+    final spoken = speech.said.join(' ').toLowerCase();
+    expect(spoken, isNot(contains('wholesale')));
+    expect(spoken, isNot(contains('மொத்த விலை')));
+    v.completeBill(PaymentMode.cash);
+    final text = billText(v.lastBill!, v.shopName).toLowerCase();
+    expect(text, isNot(contains('wholesale')));
+  });
+
   testWidgets('Retail / Wholesale button on the bill', (t) async {
     t.view.physicalSize = const Size(1440, 900);
     t.view.devicePixelRatio = 1;
@@ -105,14 +121,22 @@ void main() {
     s.handleSpoken('sugar 1 kg', EntryMethod.voice);
     await t.pumpAndSettle();
     expect(find.text('₹44'), findsWidgets);
-    await t.tap(find.text('Wholesale'));
+    await t.tap(find.text('W'));
     await t.pumpAndSettle();
     expect(s.bill.wholesale, isTrue);
     expect(find.text('₹40'), findsWidgets);
-    await t.tap(find.text('Retail'));
+    await t.tap(find.text('R'));
     await t.pumpAndSettle();
     expect(s.bill.total, 44);
   });
 }
 
 double roundTo(double v) => (v * 100).roundToDouble() / 100;
+
+class _Speech extends NoSpeechService {
+  final said = <String>[];
+
+  @override
+  Future<void> say(String tamil, String english) async =>
+      said.addAll([tamil, english]);
+}

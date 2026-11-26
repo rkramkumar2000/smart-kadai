@@ -227,15 +227,17 @@ class _BillingScreenState extends State<BillingScreen> {
       SegmentedButton<bool>(
         showSelectedIcon: false,
         segments: [
+          // Short letters only, so a customer looking at the screen does
+          // not see the words retail or wholesale.
           ButtonSegment(
             value: false,
-            label: Text(t('Retail', 'சில்லறை')),
-            icon: const Icon(Icons.storefront_outlined),
+            label: const Text('R'),
+            tooltip: t('Retail price', 'சில்லறை விலை'),
           ),
           ButtonSegment(
             value: true,
-            label: Text(t('Wholesale', 'மொத்த விலை')),
-            icon: const Icon(Icons.local_shipping_outlined),
+            label: const Text('W'),
+            tooltip: t('Wholesale price', 'மொத்த விலை'),
           ),
         ],
         selected: {b.wholesale},
@@ -721,8 +723,7 @@ class _BillingScreenState extends State<BillingScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    '${t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்')}'
-                    '${s.bill.wholesale ? ' · ${t('WHOLESALE', 'மொத்த விலை')}' : ''}',
+                    t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
                     style: const TextStyle(
                       fontSize: 14,
                       color: KadaiColors.quiet,
@@ -821,8 +822,7 @@ class _BillingScreenState extends State<BillingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்')}'
-                  '${s.bill.wholesale ? ' · ${t('WHOLESALE', 'மொத்த விலை')}' : ''}',
+                  t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
                   style: const TextStyle(
                     fontSize: 14,
                     color: KadaiColors.quiet,

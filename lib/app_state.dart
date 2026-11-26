@@ -250,18 +250,13 @@ class AppState extends ChangeNotifier {
         _say('${_taName(l)} நீக்கப்பட்டது', '${l.product.nameEn} removed');
       case VoiceCommand.total:
         _sayTotal();
+      // Only the total is said: a customer must not hear "wholesale".
       case VoiceCommand.wholesale:
         setWholesale(true);
-        _say(
-          'மொத்த விலை. ${_rs(bill.total)} ரூபாய்',
-          'Wholesale. Total ${_rs(bill.total)} rupees',
-        );
+        _sayTotal();
       case VoiceCommand.retail:
         setWholesale(false);
-        _say(
-          'சில்லறை விலை. ${_rs(bill.total)} ரூபாய்',
-          'Retail. Total ${_rs(bill.total)} rupees',
-        );
+        _sayTotal();
     }
   }
 
