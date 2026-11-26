@@ -107,6 +107,7 @@ class PhoneSpeechService implements SpeechService {
     _restart?.cancel();
     _watchdog?.cancel();
     await _stt.stop();
+    _flush();
     _changed();
   }
 
@@ -115,6 +116,7 @@ class PhoneSpeechService implements SpeechService {
   Future<void> _listen() async {
     if (!_wanted || _speaking || _starting || _stt.isListening) return;
     _starting = true;
+    _phrases.newSession();
     try {
       await _stt.listen(
         onResult: _onResult,
@@ -141,25 +143,24 @@ class PhoneSpeechService implements SpeechService {
     _restart = Timer(const Duration(milliseconds: 300), _listen);
   }
 
+  late final _phrases = PhraseAssembler(_results.add);
+
   void _onResult(SpeechRecognitionResult r) {
     if (_speaking) return;
     _problem = null;
-    final alts = [
-      for (final a in r.alternates)
-        if (a.recognizedWords.trim().isNotEmpty) a.recognizedWords,
-    ];
-    _results.add(
-      SpeechResult(
-        r.recognizedWords,
-        isFinal: r.finalResult,
-        alternatives: alts,
-      ),
+    _phrases.add(
+      r.recognizedWords,
+      isFinal: r.finalResult,
+      alternatives: [for (final a in r.alternates) a.recognizedWords],
     );
   }
+
+  void _flush() => _phrases.flush();
 
   void _onStatus(String status) {
     if (status == SpeechToText.doneStatus ||
         status == SpeechToText.notListeningStatus) {
+      _flush();
       _again();
     }
   }
@@ -193,6 +194,7 @@ class PhoneSpeechService implements SpeechService {
   /// itself, then listening starts again.
   @override
   Future<void> say(String tamil, String english) async {
+    _flush();
     _speaking = true;
     _restart?.cancel();
     try {
@@ -206,5 +208,75 @@ class PhoneSpeechService implements SpeechService {
       _speaking = false;
       _again();
     }
+  }
+}
+
+/// Turns the phone's results into finished phrases for the bill.
+///
+/// Some phones never mark a result as final, or the final one is lost when
+/// listening restarts, so the last words heard are finished after a short
+/// silence. The phone also repeats earlier words in each result ("milk",
+/// then "milk sugar 1 kg"), so only the new part is sent.
+class PhraseAssembler {
+  PhraseAssembler(
+    this.emit, {
+    this.silence = const Duration(milliseconds: 1500),
+  });
+
+  final void Function(SpeechResult) emit;
+  final Duration silence;
+
+  String _partial = '';
+  List<String> _alts = const [];
+  String _sent = '';
+  Timer? _timer;
+
+  void add(
+    String text, {
+    required bool isFinal,
+    List<String> alternatives = const [],
+  }) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    final alts = [
+      for (final a in alternatives)
+        if (a.trim().isNotEmpty) a.trim(),
+    ];
+    _timer?.cancel();
+    if (isFinal) {
+      _partial = '';
+      _finish(t, alts);
+      return;
+    }
+    _partial = t;
+    _alts = alts;
+    emit(SpeechResult(t, isFinal: false, alternatives: alts));
+    _timer = Timer(silence, flush);
+  }
+
+  /// Finishes what was heard so far.
+  void flush() {
+    _timer?.cancel();
+    if (_partial.isEmpty) return;
+    final t = _partial;
+    _partial = '';
+    _finish(t, _alts);
+  }
+
+  /// A new listening session starts from nothing.
+  void newSession() {
+    flush();
+    _sent = '';
+  }
+
+  void _finish(String text, List<String> alts) {
+    var part = text;
+    if (_sent.isNotEmpty && text.startsWith(_sent)) {
+      part = text.substring(_sent.length).trim();
+      alts = const [];
+    }
+    _sent = text;
+    if (part.isEmpty) return;
+    emit(SpeechResult(part, isFinal: true, alternatives: alts));
   }
 }
