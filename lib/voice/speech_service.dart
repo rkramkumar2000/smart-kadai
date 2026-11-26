@@ -44,6 +44,10 @@ abstract class SpeechService {
 
   /// Why voice is not working right now, in plain words. Null when fine.
   String? get problem => null;
+
+  /// Says [tamil] aloud (or [english] when no Tamil voice is installed).
+  /// Listening pauses while it speaks, so the app does not hear itself.
+  Future<void> say(String tamil, String english);
 }
 
 /// Used until a real service is configured. The owner can still type or
@@ -71,6 +75,9 @@ class NoSpeechService implements SpeechService {
 
   @override
   String? get problem => null;
+
+  @override
+  Future<void> say(String tamil, String english) async {}
 
   @override
   Future<void> stop() async {}

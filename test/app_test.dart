@@ -11,6 +11,7 @@ void main() {
 
   setUp(() {
     final repo = ShopRepository(AppDatabase.inMemory())..seedIfEmpty();
+    repo.setSetting('setup_done', '1');
     state = AppState(repo);
     state.login(state.auth.createUser('Ram', Role.owner, '1234'));
   });
@@ -143,5 +144,38 @@ void main() {
     }
     expect(state.user?.isOwner, isTrue);
     expect(state.auth.verify(state.user!.id, '4321'), isNotNull);
+
+    // The first-day guide follows: shop, UPI, paper, products.
+    expect(find.text('Your shop'), findsOneWidget);
+    await t.enterText(find.byType(TextField).first, 'Ram Stores');
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).first, 'ramstores@okaxis');
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('58 mm roll'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Start billing'));
+    await t.pumpAndSettle();
+    expect(state.shopName, 'Ram Stores');
+    expect(state.repo.setting('upi_id'), 'ramstores@okaxis');
+    expect(state.repo.setting('bill_paper'), '58mm');
+    expect(find.text('Credit book'), findsOneWidget);
+  });
+
+  testWidgets('Tamil only screen and bigger text', (t) async {
+    state.repo.setSetting('ui_lang', 'tamil');
+    state.repo.setSetting('text_scale', '1.3');
+    await pumpApp(t);
+    expect(find.text('கடன்'), findsWidgets);
+    expect(find.text('Credit book'), findsNothing);
+    await t.tap(find.text('அமைப்பு').first);
+    await t.pumpAndSettle();
+    expect(find.text('எழுத்து அளவு 130%'), findsOneWidget);
+    await t.tap(find.text('English + தமிழ்'));
+    await t.pumpAndSettle();
+    expect(find.text('Credit book'), findsWidgets);
   });
 }

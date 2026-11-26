@@ -1,5 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'lang.dart';
+
+export 'lang.dart';
+
 /// Colours and sizes from the Smart Kadai screen designs: one green accent,
 /// large type and big touch targets for owners who are not comfortable with
 /// computers.
@@ -86,6 +90,17 @@ class TwoLang extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = UiPrefs.lang.value;
+    if (lang != UiLang.both || ta.isEmpty) {
+      // One language: the Tamil (or English) name at full size.
+      final main = lang == UiLang.tamil && ta.isNotEmpty ? ta : en;
+      return Text(
+        main,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: size, fontWeight: weight, color: color),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -114,4 +129,52 @@ class TwoLang extends StatelessWidget {
 String rupees(double v) {
   final whole = v == v.truncateToDouble();
   return '₹${whole ? v.toInt() : v.toStringAsFixed(2)}';
+}
+
+/// Phones and narrow windows get one column and the menu in a drawer.
+bool isNarrow(BuildContext context) => MediaQuery.sizeOf(context).width < 720;
+
+/// Space around a screen: less on a phone.
+EdgeInsets screenPadding(BuildContext context) =>
+    EdgeInsets.all(isNarrow(context) ? 12 : 20);
+
+/// A screen's title with its buttons beside it. When there is no room
+/// (a phone) the buttons go under the title and wrap.
+class ScreenHeader extends StatelessWidget {
+  const ScreenHeader({super.key, required this.title, this.actions = const []});
+
+  final Widget title;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      if (box.maxWidth < 640) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title,
+            if (actions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: actions,
+              ),
+            ],
+          ],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: title),
+          for (final (i, a) in actions.indexed) ...[
+            if (i > 0) const SizedBox(width: 12),
+            a,
+          ],
+        ],
+      );
+    },
+  );
 }

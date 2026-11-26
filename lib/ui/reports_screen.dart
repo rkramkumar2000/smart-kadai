@@ -1,13 +1,10 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:file_selector/file_selector.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import '../core/units.dart';
 import '../customers/customers.dart';
 import '../reports/reports.dart';
+import 'save_file.dart';
 import 'theme.dart';
 
 /// Sales, profit, payment split, best sellers and purchases for a period,
@@ -33,19 +30,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
         : s.reports.purchasesCsv(from, to);
     final name =
         '${sales ? 'sales' : 'purchases'}-${from.year}-${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}.csv';
-    final loc = await getSaveLocation(
-      suggestedName: name,
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Excel (CSV)', extensions: ['csv']),
-      ],
-    );
-    if (loc == null) return;
-    // The byte-order mark makes Excel show Tamil names correctly.
-    await File(loc.path).writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(csv)]);
+    final path = await saveCsv(context, name, csv);
+    if (path == null || isPhone) return;
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved ${loc.path}. Open it in Excel.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved $path. Open it in Excel.')));
   }
 
   Future<void> _addExpense() async {
@@ -174,106 +164,112 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final (from, to) = _period.range(DateTime.now());
         final r = s.reports.build(from, to);
         final seeProfit = s.user?.canSeeProfit ?? false;
+        final narrow = isNarrow(context);
+        final tiles = [
+          _tile('Sales · விற்பனை', rupees(r.sales), '${r.bills} bills'),
+          _tile(
+            'Profit · லாபம்',
+            seeProfit ? rupees(r.profit) : '—',
+            seeProfit && r.sales > 0
+                ? '${(r.profit / r.sales * 100).toStringAsFixed(1)}% of sales'
+                : '',
+          ),
+          _tile(
+            'Bought · கொள்முதல்',
+            rupees(r.purchases),
+            '${r.purchaseBills} supplier bills',
+          ),
+          _tile(
+            'You owe suppliers',
+            rupees(r.supplierDue),
+            'All suppliers today',
+          ),
+          _tile(
+            'Expenses · செலவு',
+            rupees(r.expenses),
+            'Rent, salary, current…',
+          ),
+          _tile(
+            'Real profit',
+            seeProfit ? rupees(r.netProfit) : '—',
+            'Profit minus expenses',
+          ),
+          _tile(
+            'Customers owe you',
+            rupees(r.customerDue),
+            'Credit book today',
+          ),
+          _tile('Discounts given', rupees(r.discounts), 'On bills'),
+        ];
+        // Four tiles a row on the PC, two on a phone.
+        final perRow = narrow ? 2 : 4;
+        Widget pair(Widget a, Widget b) => narrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [a, const SizedBox(height: 12), b],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 3, child: a),
+                  const SizedBox(width: 14),
+                  Expanded(flex: 2, child: b),
+                ],
+              );
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: screenPadding(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: TwoLang('Reports', 'அறிக்கை', size: 24),
-                  ),
+              ScreenHeader(
+                title: const TwoLang('Reports', 'அறிக்கை', size: 24),
+                actions: [
                   for (final p in ReportPeriod.values)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: ChoiceChip(
-                        label: Text(
-                          '${p.label} · ${p.tamil}',
-                          style: const TextStyle(fontSize: 15),
-                        ),
-                        selected: _period == p,
-                        onSelected: (_) => setState(() => _period = p),
+                    ChoiceChip(
+                      label: Text(
+                        '${p.label} · ${p.tamil}',
+                        style: const TextStyle(fontSize: 15),
                       ),
+                      selected: _period == p,
+                      onSelected: (_) => setState(() => _period = p),
                     ),
                 ],
               ),
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  _tile('Sales · விற்பனை', rupees(r.sales), '${r.bills} bills'),
-                  _tile(
-                    'Profit · லாபம்',
-                    seeProfit ? rupees(r.profit) : '—',
-                    seeProfit && r.sales > 0
-                        ? '${(r.profit / r.sales * 100).toStringAsFixed(1)}% of sales'
-                        : '',
+              for (var i = 0; i < tiles.length; i += perRow) ...[
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (
+                        var j = i;
+                        j < i + perRow && j < tiles.length;
+                        j++
+                      ) ...[
+                        if (j > i) const SizedBox(width: 12),
+                        Expanded(child: tiles[j]),
+                      ],
+                    ],
                   ),
-                  _tile(
-                    'Bought · கொள்முதல்',
-                    rupees(r.purchases),
-                    '${r.purchaseBills} supplier bills',
-                  ),
-                  _tile(
-                    'You owe suppliers',
-                    rupees(r.supplierDue),
-                    'All suppliers today',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  _tile(
-                    'Expenses · செலவு',
-                    rupees(r.expenses),
-                    'Rent, salary, current…',
-                  ),
-                  _tile(
-                    'Real profit',
-                    seeProfit ? rupees(r.netProfit) : '—',
-                    'Profit minus expenses',
-                  ),
-                  _tile(
-                    'Customers owe you',
-                    rupees(r.customerDue),
-                    'Credit book today',
-                  ),
-                  _tile('Discounts given', rupees(r.discounts), 'On bills'),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              const SizedBox(height: 2),
+              pair(_daily(r), _modes(r)),
               const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 3, child: _daily(r)),
-                  const SizedBox(width: 14),
-                  Expanded(flex: 2, child: _modes(r)),
-                ],
-              ),
+              pair(_top(r), _expenses(from, to)),
               const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 3, child: _top(r)),
-                  const SizedBox(width: 14),
-                  Expanded(flex: 2, child: _expenses(from, to)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Text(
-                    'Voice entered ${(r.voiceShare * 100).round()}% of bill lines',
-                    style: const TextStyle(color: KadaiColors.quiet),
-                  ),
-                  const Spacer(),
+              ScreenHeader(
+                title: Text(
+                  'Voice entered ${(r.voiceShare * 100).round()}% of bill lines',
+                  style: const TextStyle(color: KadaiColors.quiet),
+                ),
+                actions: [
                   OutlinedButton.icon(
                     onPressed: () => _export(false),
                     icon: const Icon(Icons.download),
                     label: const Text('Purchases to Excel'),
                   ),
-                  const SizedBox(width: 12),
                   FilledButton.icon(
                     onPressed: () => _export(true),
                     icon: const Icon(Icons.download),
@@ -288,29 +284,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _tile(String label, String value, String note) => Expanded(
-    child: Card(
-      margin: const EdgeInsets.only(right: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: KadaiColors.quiet,
-                fontWeight: FontWeight.w600,
-              ),
+  Widget _tile(String label, String value, String note) => Card(
+    margin: EdgeInsets.zero,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: KadaiColors.quiet,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 4),
-            Text(
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
               value,
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
             ),
-            Text(note, style: const TextStyle(color: KadaiColors.quiet)),
-          ],
-        ),
+          ),
+          Text(note, style: const TextStyle(color: KadaiColors.quiet)),
+        ],
       ),
     ),
   );

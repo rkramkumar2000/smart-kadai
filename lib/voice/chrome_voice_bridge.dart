@@ -162,6 +162,10 @@ class ChromeVoiceBridge implements SpeechService {
   @override
   Future<void> stop() async => _sendAll({'cmd': 'stop'});
 
+  @override
+  Future<void> say(String tamil, String english) async =>
+      _sendAll({'cmd': 'say', 'ta': tamil, 'en': english});
+
   /// Opens the helper in a small Chrome app window.
   @override
   Future<void> open() async {

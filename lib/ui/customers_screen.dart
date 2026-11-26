@@ -106,16 +106,81 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final list = repo.customers(query: _query);
     final due = repo.totalDue();
     final open = _open;
-    return Padding(
-      padding: const EdgeInsets.all(20),
+    final narrow = isNarrow(context);
+    final listCard = Card(
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: TwoLang('Credit book', 'கடன் புத்தகம்', size: 24),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+              style: const TextStyle(fontSize: 17),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Name or phone',
               ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No customers yet. Credit bills add them here.',
+                      style: TextStyle(color: KadaiColors.quiet),
+                    ),
+                  )
+                : ListView(
+                    children: [
+                      for (final c in list)
+                        ListTile(
+                          selected: open?.id == c.id,
+                          selectedTileColor: KadaiColors.greenTint,
+                          onTap: () => setState(() => _open = c),
+                          title: Text(
+                            c.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(c.phone),
+                          trailing: Text(
+                            rupees(c.balance),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: c.balance > 0
+                                  ? KadaiColors.danger
+                                  : KadaiColors.quiet,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+    final accountCard = Card(
+      child: open == null
+          ? const Center(
+              child: Text(
+                'Pick a customer to see their account',
+                style: TextStyle(color: KadaiColors.quiet),
+              ),
+            )
+          : _account(open),
+    );
+    return Padding(
+      padding: screenPadding(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ScreenHeader(
+            title: const TwoLang('Credit book', 'கடன் புத்தகம்', size: 24),
+            actions: [
               Text(
                 'Customers owe ${rupees(due)}',
                 style: const TextStyle(
@@ -124,7 +189,6 @@ class _CustomersScreenState extends State<CustomersScreen> {
                   color: KadaiColors.danger,
                 ),
               ),
-              const SizedBox(width: 16),
               FilledButton.icon(
                 onPressed: () => _edit(),
                 icon: const Icon(Icons.person_add_alt),
@@ -134,85 +198,33 @@ class _CustomersScreenState extends State<CustomersScreen> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: TextField(
-                            style: const TextStyle(fontSize: 17),
-                            decoration: const InputDecoration(
-                              prefixIcon: Icon(Icons.search),
-                              hintText: 'Name or phone',
-                            ),
-                            onChanged: (v) => setState(() => _query = v),
+            child: !narrow
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 4, child: listCard),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 5, child: accountCard),
+                    ],
+                  )
+                : open == null
+                ? listCard
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: () => setState(() => _open = null),
+                          icon: const Icon(Icons.arrow_back),
+                          label: Text(
+                            t('All customers', 'எல்லா வாடிக்கையாளர்'),
                           ),
                         ),
-                        Expanded(
-                          child: list.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No customers yet. Credit bills add them here.',
-                                    style: TextStyle(color: KadaiColors.quiet),
-                                  ),
-                                )
-                              : ListView(
-                                  children: [
-                                    for (final c in list)
-                                      ListTile(
-                                        selected: open?.id == c.id,
-                                        selectedTileColor:
-                                            KadaiColors.greenTint,
-                                        onTap: () => setState(() => _open = c),
-                                        title: Text(
-                                          c.name,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        subtitle: Text(c.phone),
-                                        trailing: Text(
-                                          rupees(c.balance),
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                            color: c.balance > 0
-                                                ? KadaiColors.danger
-                                                : KadaiColors.quiet,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      Expanded(child: accountCard),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  flex: 5,
-                  child: Card(
-                    child: open == null
-                        ? const Center(
-                            child: Text(
-                              'Pick a customer to see their account',
-                              style: TextStyle(color: KadaiColors.quiet),
-                            ),
-                          )
-                        : _account(open),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

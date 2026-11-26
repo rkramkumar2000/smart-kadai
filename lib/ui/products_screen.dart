@@ -75,32 +75,35 @@ class _ProductsScreenState extends State<ProductsScreen> {
         final rows = _filtered();
         final cats = _categories();
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: screenPadding(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const TwoLang('Products', 'பொருட்கள்', size: 24),
-                  const SizedBox(width: 16),
-                  Text(
-                    '${s.activeProducts.length} selling',
-                    style: const TextStyle(color: KadaiColors.quiet),
-                  ),
-                  const Spacer(),
+              ScreenHeader(
+                title: Row(
+                  children: [
+                    const Flexible(
+                      child: TwoLang('Products', 'பொருட்கள்', size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(
+                      '${s.activeProducts.length} selling',
+                      style: const TextStyle(color: KadaiColors.quiet),
+                    ),
+                  ],
+                ),
+                actions: [
                   if (s.user?.canEditProducts != false) ...[
                     TextButton.icon(
                       onPressed: () => saveProductTemplate(context),
                       icon: const Icon(Icons.download),
                       label: const Text('Sample sheet'),
                     ),
-                    const SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: () => importProductsFlow(context, s),
                       icon: const Icon(Icons.upload_file),
                       label: const Text('Import from Excel'),
                     ),
-                    const SizedBox(width: 12),
                   ],
                   FilledButton.icon(
                     onPressed: s.user?.canEditProducts == false
@@ -121,28 +124,24 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 onChanged: (v) => setState(() => _query = v),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
+              _chipRow(context, [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: _category == null,
+                  onSelected: (_) => setState(() => _category = null),
+                ),
+                for (final c in cats)
                   ChoiceChip(
-                    label: const Text('All'),
-                    selected: _category == null,
-                    onSelected: (_) => setState(() => _category = null),
+                    label: Text(c),
+                    selected: _category == c,
+                    onSelected: (_) => setState(() => _category = c),
                   ),
-                  for (final c in cats)
-                    ChoiceChip(
-                      label: Text(c),
-                      selected: _category == c,
-                      onSelected: (_) => setState(() => _category = c),
-                    ),
-                  FilterChip(
-                    label: const Text('Show not selling'),
-                    selected: _showInactive,
-                    onSelected: (v) => setState(() => _showInactive = v),
-                  ),
-                ],
-              ),
+                FilterChip(
+                  label: const Text('Show not selling'),
+                  selected: _showInactive,
+                  onSelected: (v) => setState(() => _showInactive = v),
+                ),
+              ]),
               const SizedBox(height: 12),
               Expanded(
                 child: Card(
@@ -157,6 +156,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                             ),
                           ),
                         )
+                      : isNarrow(context)
+                      ? _phoneList(rows)
                       : SingleChildScrollView(
                           child: SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
@@ -236,4 +237,45 @@ class _ProductsScreenState extends State<ProductsScreen> {
       },
     );
   }
+
+  /// Filter chips wrap on the PC and scroll sideways on a phone.
+  Widget _chipRow(BuildContext context, List<Widget> chips) {
+    if (!isNarrow(context)) {
+      return Wrap(spacing: 8, runSpacing: 8, children: chips);
+    }
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: chips.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => chips[i],
+      ),
+    );
+  }
+
+  /// Products as a simple list on a phone: name, price and stock.
+  Widget _phoneList(List<Product> rows) => ListView.separated(
+    itemCount: rows.length,
+    separatorBuilder: (_, _) =>
+        const Divider(height: 1, color: Color(0xFFE8EBE4)),
+    itemBuilder: (context, i) {
+      final p = rows[i];
+      return ListTile(
+        onTap: s.user?.canEditProducts == false ? null : () => _edit(p),
+        title: TwoLang(p.nameEn, p.nameTa, size: 16),
+        subtitle: Text(
+          '${rupees(p.sellingPrice)} / ${p.stockUnit.code}'
+          '${p.status == ProductStatus.active ? '' : ' · ${p.status.label}'}',
+        ),
+        trailing: Text(
+          p.stockUnit.format(p.stockQty),
+          style: TextStyle(
+            fontWeight: p.isLowStock ? FontWeight.w700 : FontWeight.w400,
+            color: p.isLowStock ? KadaiColors.warn : null,
+          ),
+        ),
+      );
+    },
+  );
 }

@@ -62,7 +62,32 @@ const chromeHelperPage = r'''<!doctype html>
   const langSel = document.getElementById('lang');
   try { langSel.value = localStorage.getItem('sk-lang') || 'ta-IN'; } catch (e) {}
 
-  let ws = null, rec = null, wanted = false, running = false;
+  let ws = null, rec = null, wanted = false, running = false, speaking = false;
+
+  // Spoken replies. Listening pauses while speaking so the app does not
+  // hear its own voice and add items again.
+  function pickVoice(lang) {
+    const vs = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+    return vs.find(v => v.lang && v.lang.toLowerCase().startsWith(lang));
+  }
+  function say(ta, en) {
+    if (!window.speechSynthesis) return;
+    const taVoice = pickVoice('ta');
+    const u = new SpeechSynthesisUtterance(taVoice ? ta : en);
+    u.voice = taVoice || pickVoice('en-in') || pickVoice('en') || null;
+    u.lang = taVoice ? 'ta-IN' : 'en-IN';
+    u.rate = 1.05;
+    speaking = true;
+    if (rec && running) { try { rec.stop(); } catch (_) {} }
+    const done = () => {
+      speaking = false;
+      if (wanted && rec && !running) { try { rec.start(); } catch (_) {} }
+    };
+    u.onend = done; u.onerror = done;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
+  if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
 
   function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = cls || ''; }
   function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -76,6 +101,7 @@ const chromeHelperPage = r'''<!doctype html>
       if (m.cmd === 'start') start();
       if (m.cmd === 'stop') stop();
       if (m.cmd === 'toggle') wanted ? stop() : start();
+      if (m.cmd === 'say') say(m.ta || '', m.en || '');
     };
   }
 
@@ -93,6 +119,7 @@ const chromeHelperPage = r'''<!doctype html>
     r.maxAlternatives = 3;
     r.onstart = () => { running = true; setStatus('Listening · கேட்கிறது', 'ok'); send({type: 'state', listening: true}); };
     r.onresult = (ev) => {
+      if (speaking) return;
       let interim = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const res = ev.results[i];
@@ -124,7 +151,8 @@ const chromeHelperPage = r'''<!doctype html>
     r.onend = () => {
       running = false;
       // Chrome stops after a silence; keep listening while the owner wants it.
-      if (wanted) { try { r.start(); } catch (_) {} } else { send({type: 'state', listening: false}); }
+      if (wanted && !speaking) { try { r.start(); } catch (_) {} }
+      else if (!wanted) { send({type: 'state', listening: false}); }
       updateButton();
     };
     return r;

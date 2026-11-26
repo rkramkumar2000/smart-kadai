@@ -187,8 +187,11 @@ class _StockScreenState extends State<StockScreen> {
           0,
           (sum, p) => sum + (p.stockQty > 0 ? p.stockQty * p.purchasePrice : 0),
         );
+        final narrow = isNarrow(context);
+        _narrow = narrow;
+        final gap = SizedBox(width: narrow ? 8 : 14);
         return Padding(
-          padding: const EdgeInsets.all(20),
+          padding: screenPadding(context),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -203,7 +206,7 @@ class _StockScreenState extends State<StockScreen> {
                     KadaiColors.warnInk,
                     () => setState(() => _lowOnly = true),
                   ),
-                  const SizedBox(width: 14),
+                  gap,
                   _tile(
                     'Out of stock · இல்லை',
                     '$out items',
@@ -211,7 +214,7 @@ class _StockScreenState extends State<StockScreen> {
                     KadaiColors.danger,
                     () => setState(() => _lowOnly = true),
                   ),
-                  const SizedBox(width: 14),
+                  gap,
                   _tile(
                     'Stock value at cost',
                     s.user?.canSeeProfit == true ? rupees(value) : '—',
@@ -222,29 +225,29 @@ class _StockScreenState extends State<StockScreen> {
                 ],
               ),
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      style: const TextStyle(fontSize: 17),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Search product',
-                      ),
-                      onChanged: (v) => setState(() => _query = v),
-                    ),
+              ScreenHeader(
+                title: TextField(
+                  style: const TextStyle(fontSize: 17),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search product',
                   ),
-                  const SizedBox(width: 12),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+                actions: [
                   FilterChip(
                     label: const Text('Only low stock'),
                     selected: _lowOnly,
                     onSelected: (v) => setState(() => _lowOnly = v),
                   ),
-                  const SizedBox(width: 12),
                   FilledButton.icon(
                     onPressed: low.isEmpty ? null : () => _share(low),
                     icon: const Icon(Icons.send),
-                    label: const Text('Send order list on WhatsApp'),
+                    label: Text(
+                      narrow
+                          ? 'Order list on WhatsApp'
+                          : 'Send order list on WhatsApp',
+                    ),
                   ),
                 ],
               ),
@@ -275,6 +278,7 @@ class _StockScreenState extends State<StockScreen> {
                                 : p.isLowStock
                                 ? KadaiColors.warn
                                 : KadaiColors.ink;
+                            if (narrow) return _phoneRow(p, color);
                             return Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -329,6 +333,50 @@ class _StockScreenState extends State<StockScreen> {
     );
   }
 
+  bool _narrow = false;
+
+  /// One product on a phone: name and stock, then the buttons.
+  Widget _phoneRow(Product p, Color color) => Padding(
+    padding: const EdgeInsets.fromLTRB(14, 8, 8, 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: TwoLang(p.nameEn, p.nameTa)),
+            Text(
+              p.stockUnit.format(p.stockQty),
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Alert below ${p.stockUnit.format(p.minStock)}',
+                style: const TextStyle(color: KadaiColors.quiet),
+              ),
+            ),
+            TextButton(
+              onPressed: () => _history(p),
+              child: const Text('History'),
+            ),
+            if (s.user?.canCorrectStock ?? false)
+              TextButton(
+                onPressed: () => _correct(p),
+                child: const Text('Correct'),
+              ),
+          ],
+        ),
+      ],
+    ),
+  );
+
   Widget _tile(
     String label,
     String value,
@@ -346,19 +394,25 @@ class _StockScreenState extends State<StockScreen> {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(_narrow ? 10 : 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: TextStyle(color: ink, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: ink,
+                  fontWeight: FontWeight.w600,
+                  fontSize: _narrow ? 12.5 : null,
+                ),
               ),
               const SizedBox(height: 4),
               Text(
                 value,
-                style: const TextStyle(
-                  fontSize: 28,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: _narrow ? 19 : 28,
                   fontWeight: FontWeight.w800,
                 ),
               ),

@@ -1,12 +1,10 @@
-import 'dart:io';
-
-import 'package:file_selector/file_selector.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import '../auth/auth.dart';
 import '../billing/bill.dart';
 import '../printing/bill_printer.dart';
+import 'save_file.dart';
 import 'theme.dart';
 
 /// Owner only: shop details on the bill, printer, logins, AI key and backup.
@@ -81,15 +79,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _backup() async {
     final d = DateTime.now();
-    final loc = await getSaveLocation(
-      suggestedName:
+    final path = await saveOrShare(
+      context,
+      name:
           'smart-kadai-backup-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.db',
+      label: 'Backup',
+      extensions: const ['db'],
+      write: (path) async => s.repo.db.execute('VACUUM INTO ?', [path]),
     );
-    if (loc == null) return;
-    final f = File(loc.path);
-    if (f.existsSync()) f.deleteSync();
-    s.repo.db.execute('VACUUM INTO ?', [loc.path]);
-    _snack('Backup saved to ${loc.path}. Keep a copy on a pen drive.');
+    if (path == null || isPhone) return;
+    _snack('Backup saved to $path. Keep a copy on a pen drive.');
   }
 
   /// Add a login, or change one's PIN. Returns true when saved.
@@ -244,6 +243,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               const TwoLang('Settings', 'அமைப்பு', size: 24),
               const SizedBox(height: 14),
+              _section(tt('Screen and voice', 'திரை மற்றும் குரல்'), [
+                Text(t('Language on the screen', 'திரையில் மொழி')),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final l in UiLang.values)
+                      ChoiceChip(
+                        label: Text(l.label),
+                        selected: UiPrefs.lang.value == l,
+                        onSelected: (_) => setState(() => setUiLang(s, l)),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${t('Text size', 'எழுத்து அளவு')} ${(UiPrefs.textScale.value * 100).round()}%',
+                      ),
+                    ),
+                    OutlinedButton(
+                      onPressed: UiPrefs.textScale.value <= UiPrefs.minScale
+                          ? null
+                          : () => setState(() => stepTextSize(s, -1)),
+                      child: const Text('A−'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: UiPrefs.textScale.value >= UiPrefs.maxScale
+                          ? null
+                          : () => setState(() => stepTextSize(s, 1)),
+                      child: const Text('A+'),
+                    ),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    t('Speak back what was added', 'சேர்த்ததை சொல்லும்'),
+                  ),
+                  subtitle: Text(
+                    t(
+                      'After each order the app says the items and the total.',
+                      'ஒவ்வொரு முறையும் பொருட்களையும் மொத்தத்தையும் சொல்லும்.',
+                    ),
+                  ),
+                  value: s.voiceReplies,
+                  onChanged: (v) => setState(
+                    () => s.repo.setSetting('voice_reply', v ? '1' : '0'),
+                  ),
+                ),
+                Text(
+                  t(
+                    'Say "பில் போடு" or "cash" to save, "UPI" or "கடன்" for '
+                        'other payments, "கடைசி வேண்டாம்" to remove the last '
+                        'item, "கேன்சல்" to clear and "மொத்தம்" to hear the total.',
+                    '"பில் போடு" அல்லது "cash" சொன்னால் பில் சேமிக்கும். '
+                        '"UPI", "கடன்", "கடைசி வேண்டாம்", "கேன்சல்", '
+                        '"மொத்தம்" என்றும் சொல்லலாம்.',
+                  ),
+                  style: const TextStyle(color: KadaiColors.quiet),
+                ),
+              ]),
               _section('Shop details on the bill', [
                 _field('shop_name', 'Shop name · கடை பெயர்'),
                 _field('shop_address', 'Address'),

@@ -59,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_setup) {
       if (_name.text.trim().isEmpty) {
         setState(() {
-          _error = 'Type your name first · உங்கள் பெயர்';
+          _error = tt('Type your name first', 'முதலில் உங்கள் பெயர்');
           _pin = '';
         });
         return;
@@ -73,7 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (_firstPin != _pin) {
         setState(() {
-          _error = 'PINs did not match. Start again.';
+          _error = t(
+            'PINs did not match. Start again.',
+            'PIN பொருந்தவில்லை. மீண்டும் தொடங்குங்கள்.',
+          );
           _firstPin = null;
           _pin = '';
         });
@@ -86,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final u = _selected;
     if (u == null) {
       setState(() {
-        _error = 'Pick your name first';
+        _error = t('Pick your name first', 'முதலில் உங்கள் பெயரை தொடுங்கள்');
         _pin = '';
       });
       return;
@@ -98,12 +101,15 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       setState(() {
-        _error = 'Wrong PIN · தவறான PIN';
+        _error = bi('Wrong PIN · தவறான PIN');
         _pin = '';
       });
     } on PinLockedException catch (e) {
       setState(() {
-        _error = 'Too many wrong PINs. Wait ${e.waitSeconds} seconds.';
+        _error = t(
+          'Too many wrong PINs. Wait ${e.waitSeconds} seconds.',
+          'பல முறை தவறு. ${e.waitSeconds} விநாடி காத்திருங்கள்.',
+        );
         _pin = '';
       });
     }
@@ -127,8 +133,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final users = _setup ? <AppUser>[] : auth.users();
     final title = _setup
-        ? (_firstPin == null ? 'Set your 4-digit PIN' : 'Type the PIN again')
-        : 'Enter your PIN';
+        ? (_firstPin == null
+              ? t('Set your 4-digit PIN', '4 இலக்க PIN அமையுங்கள்')
+              : t('Type the PIN again', 'PIN-ஐ மீண்டும் அழுத்துங்கள்'))
+        : t('Enter your PIN', 'உங்கள் PIN அழுத்துங்கள்');
     return Scaffold(
       body: Focus(
         focusNode: _focus,
@@ -164,16 +172,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                       if (_setup) ...[
-                        const Text(
-                          'Welcome to Smart Kadai',
+                        Text(
+                          t(
+                            'Welcome to Smart Kadai',
+                            'ஸ்மார்ட் கடைக்கு வரவேற்கிறோம்',
+                          ),
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'Create the owner login · உரிமையாளர்',
+                        Text(
+                          bi('Create the owner login · உரிமையாளர்'),
                           style: TextStyle(color: KadaiColors.quiet),
                         ),
                         const SizedBox(height: 16),
@@ -181,8 +192,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           controller: _name,
                           autofocus: true,
                           style: const TextStyle(fontSize: 18),
-                          decoration: const InputDecoration(
-                            labelText: 'Your name · உங்கள் பெயர்',
+                          decoration: InputDecoration(
+                            labelText: bi('Your name · உங்கள் பெயர்'),
                           ),
                           onSubmitted: (_) => _focus.requestFocus(),
                         ),
@@ -209,7 +220,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                       ],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
+                      ViewControls(state: widget.state),
+                      const SizedBox(height: 8),
                       Text(
                         title,
                         style: const TextStyle(

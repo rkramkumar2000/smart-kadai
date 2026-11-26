@@ -4,6 +4,8 @@ import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../data/shop_repository.dart';
 import '../voice/phonetic.dart';
+import 'barcode_scan.dart';
+import 'save_file.dart' show isPhone;
 import 'theme.dart';
 
 /// Add or edit one product and the units it is sold in.
@@ -270,8 +272,9 @@ class _ProductFormState extends State<ProductForm> {
   @override
   Widget build(BuildContext context) {
     final p = widget.product;
+    _narrow = isNarrow(context);
     return Dialog(
-      insetPadding: const EdgeInsets.all(32),
+      insetPadding: _narrow ? EdgeInsets.zero : const EdgeInsets.all(32),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 980, maxHeight: 860),
         child: Form(
@@ -280,8 +283,10 @@ class _ProductFormState extends State<ProductForm> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-                child: Row(
+                padding: EdgeInsets.fromLTRB(_pad, 20, _pad, 8),
+                child: Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       _isNew ? 'Add product' : 'Edit product',
@@ -290,12 +295,10 @@ class _ProductFormState extends State<ProductForm> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 12),
                     Text(
                       'ID $_code',
                       style: const TextStyle(color: KadaiColors.quiet),
                     ),
-                    const Spacer(),
                     if (p != null)
                       Text(
                         'Created ${_date(p.createdAt)} · Updated ${_date(p.updatedAt)}',
@@ -309,7 +312,7 @@ class _ProductFormState extends State<ProductForm> {
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                  padding: EdgeInsets.fromLTRB(_pad, 8, _pad, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -404,7 +407,7 @@ class _ProductFormState extends State<ProductForm> {
                             },
                           ),
                           _field(_brand, 'Brand'),
-                          _field(_barcode, 'Barcode'),
+                          _field(_barcode, 'Barcode', scan: true),
                         ]),
                         _field(_desc, 'Description', lines: 2),
                         _row([
@@ -429,23 +432,21 @@ class _ProductFormState extends State<ProductForm> {
                         ]),
                       ],
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          const TwoLang(
-                            'Sold as',
-                            'விற்கும் அளவுகள்',
-                            size: 18,
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'For example 250 GRAM, 1 KG, 1 BOX. The first one marked "Usual" is used when only a number is said.',
+                      ScreenHeader(
+                        title: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TwoLang('Sold as', 'விற்கும் அளவுகள்', size: 18),
+                            Text(
+                              'For example 250 GRAM, 1 KG, 1 BOX. The one marked with a star is used when only a number is said.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: KadaiColors.quiet,
                               ),
                             ),
-                          ),
+                          ],
+                        ),
+                        actions: [
                           OutlinedButton.icon(
                             onPressed: _addVariant,
                             icon: const Icon(Icons.add),
@@ -461,7 +462,7 @@ class _ProductFormState extends State<ProductForm> {
               ),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: EdgeInsets.symmetric(horizontal: _pad),
                   child: Text(
                     _error!,
                     style: const TextStyle(
@@ -471,7 +472,7 @@ class _ProductFormState extends State<ProductForm> {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                padding: EdgeInsets.fromLTRB(_pad, 12, _pad, 20),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -500,6 +501,7 @@ class _ProductFormState extends State<ProductForm> {
   String get _unitName => _stockUnit.code;
 
   Widget _variantRow(int i, _VariantDraft v) {
+    if (_narrow) return _phoneVariant(i, v);
     final auto = _autoFactor(v);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -534,7 +536,7 @@ class _ProductFormState extends State<ProductForm> {
           const SizedBox(width: 8),
           Expanded(child: _field(v.cost, 'Purchase ₹', number: true)),
           const SizedBox(width: 8),
-          Expanded(flex: 2, child: _field(v.barcode, 'Barcode')),
+          Expanded(flex: 2, child: _field(v.barcode, 'Barcode', scan: true)),
           const SizedBox(width: 8),
           SizedBox(
             width: 150,
@@ -586,17 +588,130 @@ class _ProductFormState extends State<ProductForm> {
     );
   }
 
+  void _makeUsual(_VariantDraft v) => setState(() {
+    for (final d in _variants) {
+      d.isDefault = d == v;
+    }
+  });
+
+  void _removeVariant(int i) => setState(() {
+    _variants.removeAt(i).dispose();
+    if (!_variants.any((d) => d.isDefault)) {
+      _variants.first.isDefault = true;
+    }
+  });
+
+  /// One size on a phone, as a small card of fields.
+  Widget _phoneVariant(int i, _VariantDraft v) {
+    final auto = _autoFactor(v);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: _field(
+                    v.qty,
+                    'Size',
+                    number: true,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<Unit>(
+                    isExpanded: true,
+                    initialValue: v.unit,
+                    decoration: const InputDecoration(labelText: 'Unit'),
+                    items: [
+                      for (final u in Unit.values)
+                        DropdownMenuItem(value: u, child: Text(u.code)),
+                    ],
+                    onChanged: (u) => setState(() => v.unit = u ?? v.unit),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Use this size when only a number is said',
+                  onPressed: () => _makeUsual(v),
+                  icon: Icon(
+                    v.isDefault ? Icons.star : Icons.star_border,
+                    color: v.isDefault ? KadaiColors.green : KadaiColors.quiet,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove size',
+                  onPressed: _variants.length == 1
+                      ? null
+                      : () => _removeVariant(i),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _field(v.price, 'Selling ₹', number: true)),
+                const SizedBox(width: 8),
+                Expanded(child: _field(v.cost, 'Purchase ₹', number: true)),
+                const SizedBox(width: 4),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: _field(v.barcode, 'Barcode', scan: true),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: auto != null
+                  ? InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Uses stock ($_unitName)',
+                      ),
+                      child: Text(formatQty(auto)),
+                    )
+                  : _field(
+                      v.factor,
+                      '$_unitName in 1 ${v.unit.code}',
+                      number: true,
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _narrow = false;
+  double get _pad => _narrow ? 14 : 24;
+
   Widget _row(List<Widget> children) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final (i, c) in children.indexed) ...[
-          if (i > 0) const SizedBox(width: 12),
-          Expanded(child: c),
-        ],
-      ],
-    ),
+    child: _narrow
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final c in children)
+                if (c is! SizedBox) ...[c, const SizedBox(height: 12)],
+            ],
+          )
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (i, c) in children.indexed) ...[
+                if (i > 0) const SizedBox(width: 12),
+                Expanded(child: c),
+              ],
+            ],
+          ),
   );
 
   Widget _field(
@@ -606,6 +721,7 @@ class _ProductFormState extends State<ProductForm> {
     bool number = false,
     int lines = 1,
     ValueChanged<String>? onChanged,
+    bool scan = false,
   }) => TextFormField(
     controller: c,
     maxLines: lines,
@@ -613,7 +729,19 @@ class _ProductFormState extends State<ProductForm> {
     keyboardType: number
         ? const TextInputType.numberWithOptions(decimal: true)
         : TextInputType.text,
-    decoration: InputDecoration(labelText: label),
+    decoration: InputDecoration(
+      labelText: label,
+      suffixIcon: scan && isPhone
+          ? IconButton(
+              tooltip: tt('Scan barcode', 'பார்கோடு ஸ்கேன்'),
+              icon: const Icon(Icons.qr_code_scanner),
+              onPressed: () async {
+                final code = await scanBarcode(context);
+                if (code != null) c.text = code;
+              },
+            )
+          : null,
+    ),
     validator: (v) {
       if (required && (v == null || v.trim().isEmpty)) return 'Required';
       if (number &&

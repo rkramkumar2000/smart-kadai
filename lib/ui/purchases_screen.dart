@@ -175,22 +175,155 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
     final suppliers = buy.suppliers();
     final recent = buy.recentPurchases(limit: 50);
     final owed = suppliers.fold<double>(0, (t, x) => t + x.balance);
-    return Padding(
-      padding: const EdgeInsets.all(20),
+    final suppliersCard = Card(
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: TwoLang('Purchases', 'கொள்முதல்', size: 24),
-              ),
+          ListTile(
+            title: const Text(
+              'Suppliers · வியாபாரிகள்',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text('You owe ${rupees(owed)} in all'),
+            trailing: TextButton.icon(
+              onPressed: () => _editSupplier(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add'),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: suppliers.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No suppliers yet',
+                      style: TextStyle(color: KadaiColors.quiet),
+                    ),
+                  )
+                : ListView(
+                    children: [
+                      for (final sup in suppliers)
+                        ListTile(
+                          onTap: () => _editSupplier(sup),
+                          title: Text(
+                            sup.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(
+                            [
+                              if (sup.phone.isNotEmpty) sup.phone,
+                              if (sup.gstin.isNotEmpty) sup.gstin,
+                            ].join(' · '),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                rupees(sup.balance),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: sup.balance > 0
+                                      ? KadaiColors.danger
+                                      : KadaiColors.quiet,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: sup.balance > 0
+                                    ? () => _pay(sup)
+                                    : null,
+                                child: const Text('Pay'),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+    final billsCard = Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ListTile(
+            title: Text(
+              'Recent supplier bills',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: recent.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No purchases yet',
+                      style: TextStyle(color: KadaiColors.quiet),
+                    ),
+                  )
+                : ListView(
+                    children: [
+                      for (final p in recent)
+                        ListTile(
+                          leading: Icon(
+                            p.source == 'OCR'
+                                ? Icons.photo_camera_outlined
+                                : Icons.receipt_long_outlined,
+                            color: KadaiColors.quiet,
+                          ),
+                          title: Text(p.supplierName),
+                          subtitle: Text(
+                            '${_day(p.date)}'
+                            '${p.invoiceNo.isEmpty ? '' : ' · Bill ${p.invoiceNo}'}'
+                            ' · ${p.itemCount} items',
+                          ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                rupees(p.total),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              if (p.due > 0)
+                                Text(
+                                  'Due ${rupees(p.due)}',
+                                  style: const TextStyle(
+                                    color: KadaiColors.danger,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: screenPadding(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ScreenHeader(
+            title: const TwoLang('Purchases', 'கொள்முதல்', size: 24),
+            actions: [
               OutlinedButton.icon(
                 onPressed: _readPhoto,
                 icon: const Icon(Icons.photo_camera_outlined),
                 label: const Text('Read bill photo'),
               ),
-              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: () => _newPurchase(),
                 icon: const Icon(Icons.add),
@@ -200,162 +333,35 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: Card(
-                    clipBehavior: Clip.antiAlias,
+            child: isNarrow(context)
+                ? DefaultTabController(
+                    length: 2,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        ListTile(
-                          title: const Text(
-                            'Suppliers · வியாபாரிகள்',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          subtitle: Text('You owe ${rupees(owed)} in all'),
-                          trailing: TextButton.icon(
-                            onPressed: () => _editSupplier(),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add'),
-                          ),
+                        TabBar(
+                          tabs: [
+                            Tab(text: t('Suppliers', 'வியாபாரிகள்')),
+                            Tab(text: t('Bills', 'பில்கள்')),
+                          ],
                         ),
-                        const Divider(height: 1),
+                        const SizedBox(height: 8),
                         Expanded(
-                          child: suppliers.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No suppliers yet',
-                                    style: TextStyle(color: KadaiColors.quiet),
-                                  ),
-                                )
-                              : ListView(
-                                  children: [
-                                    for (final sup in suppliers)
-                                      ListTile(
-                                        onTap: () => _editSupplier(sup),
-                                        title: Text(
-                                          sup.name,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          [
-                                            if (sup.phone.isNotEmpty) sup.phone,
-                                            if (sup.gstin.isNotEmpty) sup.gstin,
-                                          ].join(' · '),
-                                        ),
-                                        trailing: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              rupees(sup.balance),
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
-                                                color: sup.balance > 0
-                                                    ? KadaiColors.danger
-                                                    : KadaiColors.quiet,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            OutlinedButton(
-                                              onPressed: sup.balance > 0
-                                                  ? () => _pay(sup)
-                                                  : null,
-                                              child: const Text('Pay'),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                          child: TabBarView(
+                            children: [suppliersCard, billsCard],
+                          ),
                         ),
                       ],
                     ),
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 4, child: suppliersCard),
+                      const SizedBox(width: 14),
+                      Expanded(flex: 5, child: billsCard),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  flex: 5,
-                  child: Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const ListTile(
-                          title: Text(
-                            'Recent supplier bills',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const Divider(height: 1),
-                        Expanded(
-                          child: recent.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No purchases yet',
-                                    style: TextStyle(color: KadaiColors.quiet),
-                                  ),
-                                )
-                              : ListView(
-                                  children: [
-                                    for (final p in recent)
-                                      ListTile(
-                                        leading: Icon(
-                                          p.source == 'OCR'
-                                              ? Icons.photo_camera_outlined
-                                              : Icons.receipt_long_outlined,
-                                          color: KadaiColors.quiet,
-                                        ),
-                                        title: Text(p.supplierName),
-                                        subtitle: Text(
-                                          '${_day(p.date)}'
-                                          '${p.invoiceNo.isEmpty ? '' : ' · Bill ${p.invoiceNo}'}'
-                                          ' · ${p.itemCount} items',
-                                        ),
-                                        trailing: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Text(
-                                              rupees(p.total),
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            if (p.due > 0)
-                                              Text(
-                                                'Due ${rupees(p.due)}',
-                                                style: const TextStyle(
-                                                  color: KadaiColors.danger,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

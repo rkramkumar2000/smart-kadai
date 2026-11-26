@@ -14,6 +14,7 @@ import 'reports/reports.dart';
 import 'voice/product_matcher.dart';
 import 'voice/speech_service.dart';
 import 'voice/utterance_parser.dart';
+import 'voice/voice_commands.dart';
 
 /// Everything the screens share: the catalogue, the bill being made and the
 /// voice matches waiting for the owner to confirm.
@@ -37,6 +38,14 @@ class AppState extends ChangeNotifier {
   final ReportRepository reports;
   final CustomerRepository customers;
   final ExpenseRepository expenses;
+
+  /// Save commands said by voice ("bill podu", "UPI", "கடன்"). The billing
+  /// screen runs them so UPI and credit bills show their usual dialogs.
+  final _commands = StreamController<PaymentMode>.broadcast();
+  Stream<PaymentMode> get voiceSaves => _commands.stream;
+
+  /// Whether the app answers aloud ("2 கடலை மிட்டாய்", "மொத்தம் 150 ரூபாய்").
+  bool get voiceReplies => repo.setting('voice_reply', '1') == '1';
 
   /// Bills put on hold while another customer is served.
   final List<Bill> held = [];
@@ -177,8 +186,10 @@ class AppState extends ChangeNotifier {
   /// otherwise turns listening on or off.
   Future<void> toggleListening() async {
     if (!speech.isAvailable) {
+      // Chrome: opens the helper window, which connects a moment later.
+      // Phone: asks for the mic, then listening can start straight away.
       await speech.open();
-      return;
+      if (!speech.isAvailable) return;
     }
     listening ? await speech.stop() : await speech.start();
   }
@@ -190,8 +201,19 @@ class AppState extends ChangeNotifier {
       return;
     }
     final alts = r.alternatives.isEmpty ? [r.text] : r.alternatives;
+    for (final a in alts) {
+      final cmd = detectCommand(a);
+      if (cmd != null) {
+        heard = a;
+        runCommand(cmd);
+        return;
+      }
+    }
     final best = chooseAlternative(alts);
+    final before = bill.lines.length;
+    final counts = {for (final l in bill.lines) l.product.id: l.count};
     final (sure, unsure) = handleSpoken(best, EntryMethod.voice);
+    _replyAdded(before, counts, unsure);
     repo.logVoice(
       service: speech.runtimeType.toString(),
       heard: r.text,
@@ -201,6 +223,81 @@ class AppState extends ChangeNotifier {
       unsure: unsure,
       result: bill.lines.map((l) => l.product.nameEn).join(', '),
     );
+  }
+
+  /// Runs a spoken command. Saving goes through [voiceSaves].
+  void runCommand(VoiceCommand c) {
+    switch (c) {
+      case VoiceCommand.saveCash:
+        _save(PaymentMode.cash);
+      case VoiceCommand.saveUpi:
+        _save(PaymentMode.upi);
+      case VoiceCommand.saveCredit:
+        _save(PaymentMode.credit);
+      case VoiceCommand.clear:
+        if (bill.lines.isEmpty && pending.isEmpty) return;
+        clearBill();
+        _say('பில் அழிக்கப்பட்டது', 'Bill cleared');
+      case VoiceCommand.removeLast:
+        if (pending.isNotEmpty) {
+          pending.removeLast();
+          notifyListeners();
+          return;
+        }
+        if (bill.lines.isEmpty) return;
+        final l = bill.lines.removeLast();
+        notifyListeners();
+        _say('${_taName(l)} நீக்கப்பட்டது', '${l.product.nameEn} removed');
+      case VoiceCommand.total:
+        _sayTotal();
+    }
+  }
+
+  void _save(PaymentMode m) {
+    if (bill.lines.isEmpty) {
+      _say('பில் காலியாக உள்ளது', 'The bill is empty');
+      return;
+    }
+    _commands.add(m);
+  }
+
+  void _say(String ta, String en) {
+    if (voiceReplies) speech.say(ta, en);
+  }
+
+  static String _rs(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  void _sayTotal() => _say(
+    'மொத்தம் ${_rs(bill.total)} ரூபாய்',
+    'Total ${_rs(bill.total)} rupees',
+  );
+
+  static String _taName(BillLine l) =>
+      l.product.nameTa.isEmpty ? l.product.nameEn : l.product.nameTa;
+
+  /// Says what was just added: "2 கடலை மிட்டாய். மொத்தம் 10 ரூபாய்".
+  void _replyAdded(int before, Map<String, double> counts, int unsure) {
+    final ta = <String>[], en = <String>[];
+    for (final l in bill.lines) {
+      final added = l.count - (counts[l.product.id] ?? 0);
+      if (added <= 0) continue;
+      final size = l.variant == null ? l.product.stockUnit.code : '';
+      ta.add('${formatQty(added)} $size ${_taName(l)}'.replaceAll('  ', ' '));
+      en.add(
+        '${formatQty(added)} $size ${l.product.nameEn}'.replaceAll('  ', ' '),
+      );
+    }
+    if (ta.isNotEmpty) {
+      _say(
+        '${ta.join(', ')}. மொத்தம் ${_rs(bill.total)} ரூபாய்'
+            '${unsure > 0 ? '. மீதி எது என்று தொடுங்கள்' : ''}',
+        '${en.join(', ')}. Total ${_rs(bill.total)} rupees'
+            '${unsure > 0 ? '. Please pick the rest' : ''}',
+      );
+    } else if (unsure > 0) {
+      _say('எது என்று தொடுங்கள்', 'Please pick the product');
+    }
   }
 
   /// Chrome gives up to three guesses of what was said. Use the one whose
@@ -409,6 +506,10 @@ class AppState extends ChangeNotifier {
     if (bill.lines.isEmpty) return null;
     if (mode == PaymentMode.credit && bill.customerId == null) return null;
     final no = repo.saveSale(bill, mode, userId: user?.id);
+    _say(
+      'பில் சேமிக்கப்பட்டது. ${_rs(bill.total)} ரூபாய். நன்றி',
+      'Bill saved. ${_rs(bill.total)} rupees. Thank you',
+    );
     lastBill = SavedBill(
       number: no,
       bill: bill,
@@ -426,6 +527,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _commands.close();
     _sub.cancel();
     _changeSub.cancel();
     super.dispose();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -7,7 +9,9 @@ import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../printing/bill_printer.dart';
 import '../voice/product_matcher.dart';
+import 'barcode_scan.dart';
 import 'customers_screen.dart';
+import 'save_file.dart' show isPhone;
 import 'theme.dart';
 import 'upi_qr.dart';
 import 'whatsapp.dart';
@@ -26,19 +30,57 @@ class _BillingScreenState extends State<BillingScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
 
+  StreamSubscription<PaymentMode>? _voiceSaves;
+
   AppState get s => widget.state;
 
   @override
+  void initState() {
+    super.initState();
+    // "பில் போடு" / "cash" / "UPI" spoken at the counter saves the bill.
+    _voiceSaves = s.voiceSaves.listen((m) {
+      if (mounted) _pay(m);
+    });
+  }
+
+  @override
   void dispose() {
+    _voiceSaves?.cancel();
     _input.dispose();
     _inputFocus.dispose();
     super.dispose();
   }
 
+  /// On the PC the typing box keeps focus for the barcode gun. On a phone
+  /// that would keep the keyboard open over the bill, so it does not.
+  void _refocus() {
+    if (!isPhone) _inputFocus.requestFocus();
+  }
+
+  Future<void> _scan() async {
+    final code = await scanBarcode(context);
+    if (code == null || !mounted) return;
+    final before = s.bill.lines.length;
+    s.handleTyped(code);
+    if (s.bill.lines.length == before && s.findByBarcode(code) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tt(
+              'No product has barcode $code. Add it in Products.',
+              'இந்த பார்கோடு உள்ள பொருள் இல்லை.',
+            ),
+            style: const TextStyle(fontSize: 15),
+          ),
+        ),
+      );
+    }
+  }
+
   void _submit() {
     s.handleTyped(_input.text);
     _input.clear();
-    _inputFocus.requestFocus();
+    _refocus();
   }
 
   Future<void> _pay(PaymentMode mode) async {
@@ -68,13 +110,20 @@ class _BillingScreenState extends State<BillingScreen> {
     messenger.showSnackBar(
       SnackBar(
         duration: const Duration(seconds: 8),
-        content: Row(
+        content: Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
+            SizedBox(
+              width: isNarrow(context) ? double.infinity : 520,
               child: Text(
-                'Bill $no saved (${mode.label}'
-                '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}). '
-                'Stock updated.',
+                t(
+                  'Bill $no saved (${mode.label}'
+                      '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}). '
+                      'Stock updated.',
+                  'பில் $no சேமிக்கப்பட்டது (${modeTa(mode)}'
+                      '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}).',
+                ),
                 style: const TextStyle(fontSize: 16),
               ),
             ),
@@ -83,7 +132,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 messenger.hideCurrentSnackBar();
                 printBill(s, saved);
               },
-              child: const Text('Print bill'),
+              child: Text(t('Print bill', 'அச்சிடு')),
             ),
             TextButton(
               onPressed: () {
@@ -94,13 +143,13 @@ class _BillingScreenState extends State<BillingScreen> {
                   phone: saved.bill.customerPhone,
                 );
               },
-              child: const Text('WhatsApp bill'),
+              child: Text(t('WhatsApp bill', 'வாட்ஸ்அப்')),
             ),
           ],
         ),
       ),
     );
-    _inputFocus.requestFocus();
+    _refocus();
   }
 
   Future<void> _discount() async {
@@ -110,14 +159,14 @@ class _BillingScreenState extends State<BillingScreen> {
     final v = await showDialog<double>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Discount · தள்ளுபடி'),
+        title: Text(bi('Discount · தள்ளுபடி')),
         content: SizedBox(
           width: 340,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Bill ${rupees(s.bill.subtotal)}'),
+              Text('${t('Bill', 'பில்')} ${rupees(s.bill.subtotal)}'),
               const SizedBox(height: 10),
               TextField(
                 controller: c,
@@ -125,8 +174,11 @@ class _BillingScreenState extends State<BillingScreen> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Rupees off, or a % like 5%',
+                decoration: InputDecoration(
+                  labelText: t(
+                    'Rupees off, or a % like 5%',
+                    'தள்ளுபடி ரூபாய், அல்லது 5% போல',
+                  ),
                 ),
                 onSubmitted: (t) => Navigator.pop(context, _parseOff(t)),
               ),
@@ -136,18 +188,18 @@ class _BillingScreenState extends State<BillingScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 0.0),
-            child: const Text('No discount'),
+            child: Text(t('No discount', 'தள்ளுபடி இல்லை')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, _parseOff(c.text)),
-            child: const Text('Apply'),
+            child: Text(t('Apply', 'சரி')),
           ),
         ],
       ),
     );
     c.dispose();
     if (v != null) s.setDiscount(v);
-    _inputFocus.requestFocus();
+    _refocus();
   }
 
   double _parseOff(String t) {
@@ -162,10 +214,13 @@ class _BillingScreenState extends State<BillingScreen> {
   Future<void> _customer() async {
     final c = await pickCustomer(context, s);
     if (c != null) s.setCustomer(c);
-    _inputFocus.requestFocus();
+    _refocus();
   }
 
   /// Customer, discount and held bills, just above the total.
+  /// Keyboard shortcut hints are for the PC only.
+  static String _key(String k) => isPhone ? '' : ' ($k)';
+
   Widget _billOptions() {
     final b = s.bill;
     return Wrap(
@@ -176,7 +231,9 @@ class _BillingScreenState extends State<BillingScreen> {
         InputChip(
           avatar: const Icon(Icons.person_outline),
           label: Text(
-            b.customerName.isEmpty ? 'Customer (F4)' : b.customerName,
+            b.customerName.isEmpty
+                ? '${t('Customer', 'வாடிக்கையாளர்')}${_key('F4')}'
+                : b.customerName,
             style: const TextStyle(fontSize: 15),
           ),
           onPressed: _customer,
@@ -185,7 +242,9 @@ class _BillingScreenState extends State<BillingScreen> {
         InputChip(
           avatar: const Icon(Icons.percent),
           label: Text(
-            b.discount == 0 ? 'Discount (F6)' : '${rupees(b.discount)} off',
+            b.discount == 0
+                ? '${t('Discount', 'தள்ளுபடி')}${_key('F6')}'
+                : '${rupees(b.discount)} ${t('off', 'தள்ளுபடி')}',
             style: const TextStyle(fontSize: 15),
           ),
           onPressed: b.lines.isEmpty ? null : _discount,
@@ -193,7 +252,10 @@ class _BillingScreenState extends State<BillingScreen> {
         ),
         ActionChip(
           avatar: const Icon(Icons.pause_circle_outline),
-          label: const Text('Hold bill (F8)', style: TextStyle(fontSize: 15)),
+          label: Text(
+            '${t('Hold bill', 'பில் நிறுத்து')}${_key('F8')}',
+            style: const TextStyle(fontSize: 15),
+          ),
           onPressed: b.lines.isEmpty ? null : s.holdBill,
         ),
         for (final (i, h) in s.held.indexed)
@@ -201,8 +263,8 @@ class _BillingScreenState extends State<BillingScreen> {
             backgroundColor: KadaiColors.warnTint,
             avatar: const Icon(Icons.play_arrow),
             label: Text(
-              'Held ${i + 1}: '
-              '${h.customerName.isEmpty ? '${h.lines.length} items' : h.customerName}'
+              '${t('Held', 'நிறுத்திய பில்')} ${i + 1}: '
+              '${h.customerName.isEmpty ? '${h.lines.length} ${t('items', 'பொருள்')}' : h.customerName}'
               ' · ${rupees(h.total)}',
               style: const TextStyle(fontSize: 15),
             ),
@@ -213,19 +275,22 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   void _voice() {
-    if (!s.voiceReady) {
+    if (!s.voiceReady && !isPhone) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Opening the voice window in Chrome. The first time, click Allow '
-            'for the microphone.',
-            style: TextStyle(fontSize: 15),
+            t(
+              'Opening the voice window in Chrome. The first time, click Allow '
+                  'for the microphone.',
+              'Chrome-ல் குரல் சாளரம் திறக்கிறது. முதல் முறை மைக்ரோஃபோனுக்கு Allow அழுத்துங்கள்.',
+            ),
+            style: const TextStyle(fontSize: 15),
           ),
         ),
       );
     }
     s.toggleListening();
-    _inputFocus.requestFocus();
+    _refocus();
   }
 
   @override
@@ -242,22 +307,29 @@ class _BillingScreenState extends State<BillingScreen> {
       },
       child: ListenableBuilder(
         listenable: s,
-        builder: (context, _) => Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 3, child: _billColumn()),
-              const SizedBox(width: 20),
-              SizedBox(width: 330, child: _quickItems()),
-            ],
-          ),
-        ),
+        builder: (context, _) => MediaQuery.sizeOf(context).width < 720
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+                child: _billColumn(phone: true),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: _billColumn()),
+                    const SizedBox(width: 20),
+                    SizedBox(width: 330, child: _quickItems()),
+                  ],
+                ),
+              ),
       ),
     );
   }
 
-  Widget _billColumn() {
+  Widget _billColumn({bool phone = false}) {
+    // While the phone keyboard is open only the box and the bill show.
+    final typing = phone && MediaQuery.viewInsetsOf(context).bottom > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -267,46 +339,80 @@ class _BillingScreenState extends State<BillingScreen> {
               child: TextField(
                 controller: _input,
                 focusNode: _inputFocus,
-                autofocus: true,
+                autofocus: !isPhone,
                 style: const TextStyle(fontSize: 18),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: 'Type item, scan barcode, or type what was said · பொருள் தேடு',
+                  hintText: phone
+                      ? t('Type an item', 'பொருள் தேடு')
+                      : bi(
+                          'Type item, scan barcode, or type what was said · பொருள் தேடு',
+                        ),
                 ),
                 onSubmitted: (_) => _submit(),
               ),
             ),
-            const SizedBox(width: 12),
-            SizedBox(
-              height: 60,
-              child: FilledButton.icon(
-                onPressed: _voice,
-                style: FilledButton.styleFrom(
-                  backgroundColor: s.listening
-                      ? KadaiColors.danger
-                      : KadaiColors.green,
-                  padding: const EdgeInsets.symmetric(horizontal: 22),
-                ),
-                icon: Icon(s.listening ? Icons.stop : Icons.mic, size: 28),
-                label: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      s.listening ? 'Listening…' : 'Speak',
-                      style: const TextStyle(fontSize: 17),
-                    ),
-                    const Text(
-                      'F2 · பேசுங்கள்',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+            if (isPhone) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 60,
+                width: 60,
+                child: IconButton.filledTonal(
+                  tooltip: tt('Scan barcode', 'பார்கோடு ஸ்கேன்'),
+                  onPressed: _scan,
+                  icon: const Icon(Icons.qr_code_scanner, size: 28),
                 ),
               ),
-            ),
+            ],
+            SizedBox(width: phone ? 8 : 12),
+            if (phone)
+              SizedBox(
+                height: 60,
+                width: 72,
+                child: FilledButton(
+                  onPressed: _voice,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: s.listening
+                        ? KadaiColors.danger
+                        : KadaiColors.green,
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: Icon(s.listening ? Icons.stop : Icons.mic, size: 32),
+                ),
+              )
+            else
+              SizedBox(
+                height: 60,
+                child: FilledButton.icon(
+                  onPressed: _voice,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: s.listening
+                        ? KadaiColors.danger
+                        : KadaiColors.green,
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                  ),
+                  icon: Icon(s.listening ? Icons.stop : Icons.mic, size: 28),
+                  label: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.listening
+                            ? t('Listening…', 'கேட்கிறது…')
+                            : t('Speak', 'பேசு'),
+                        style: const TextStyle(fontSize: 17),
+                      ),
+                      const Text(
+                        'F2 · பேசுங்கள்',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
         const SizedBox(height: 6),
@@ -326,10 +432,24 @@ class _BillingScreenState extends State<BillingScreen> {
               child: Text(
                 s.voiceProblem ??
                     (!s.voiceReady
-                        ? 'Voice window is closed. Click Speak to open it in Chrome.'
+                        ? (isPhone
+                              ? t(
+                                  'Press Speak and allow the microphone.',
+                                  'பேசு அழுத்தி மைக்கை அனுமதியுங்கள்.',
+                                )
+                              : t(
+                                  'Voice window is closed. Click Speak to open it in Chrome.',
+                                  'குரல் சாளரம் மூடியுள்ளது. திறக்க பேசு அழுத்துங்கள்.',
+                                ))
                         : s.listening
-                        ? 'Listening through Chrome. Speak naturally; items appear as you finish each one.'
-                        : 'Voice ready. Press F2 or Speak.'),
+                        ? t(
+                            'Listening. Speak naturally; items appear as you finish each one.',
+                            'கேட்கிறது. சாதாரணமாக பேசுங்கள்; ஒவ்வொரு பொருளும் சொன்னதும் சேரும்.',
+                          )
+                        : t(
+                            'Voice ready. Press F2 or Speak.',
+                            'குரல் தயார். F2 அல்லது பேசு அழுத்துங்கள்.',
+                          )),
                 style: TextStyle(
                   fontSize: s.voiceProblem != null ? 15 : 13,
                   fontWeight: s.voiceProblem != null ? FontWeight.w600 : null,
@@ -350,9 +470,12 @@ class _BillingScreenState extends State<BillingScreen> {
                 children: [
                   const Icon(Icons.graphic_eq, color: KadaiColors.green),
                   const SizedBox(width: 10),
-                  const Text(
-                    'Heard: ',
-                    style: TextStyle(color: KadaiColors.quiet, fontSize: 16),
+                  Text(
+                    t('Heard: ', 'கேட்டது: '),
+                    style: const TextStyle(
+                      color: KadaiColors.quiet,
+                      fontSize: 16,
+                    ),
                   ),
                   Expanded(
                     child: Text(
@@ -372,27 +495,35 @@ class _BillingScreenState extends State<BillingScreen> {
             products: s.activeProducts,
             onPick: (p) {
               s.confirm(m, p);
-              _inputFocus.requestFocus();
+              _refocus();
             },
             onSkip: () => s.dismiss(m),
           ),
         ],
-        const SizedBox(height: 12),
-        Expanded(child: Card(child: _lines())),
-        const SizedBox(height: 10),
-        _billOptions(),
-        const SizedBox(height: 10),
-        _totalBar(),
+        if (phone && !typing) ...[const SizedBox(height: 8), _quickStrip()],
+        SizedBox(height: phone ? 8 : 12),
+        Expanded(
+          child: Card(child: _lines(phone: phone)),
+        ),
+        if (!typing) ...[
+          SizedBox(height: phone ? 6 : 10),
+          _billOptions(),
+          SizedBox(height: phone ? 6 : 10),
+          phone ? _phoneTotalBar() : _totalBar(),
+        ],
       ],
     );
   }
 
-  Widget _lines() {
+  Widget _lines({bool phone = false}) {
     final lines = s.bill.lines;
     if (lines.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
-          'Speak, scan or tap items to start a bill',
+          t(
+            'Speak, scan or tap items to start a bill',
+            'பில் தொடங்க பேசுங்கள், ஸ்கேன் செய்யுங்கள் அல்லது பொருளை தொடுங்கள்',
+          ),
           style: TextStyle(fontSize: 17, color: KadaiColors.quiet),
         ),
       );
@@ -405,6 +536,7 @@ class _BillingScreenState extends State<BillingScreen> {
       itemBuilder: (context, i) {
         final l = lines[i];
         final step = l.variant == null ? _looseStep(l.product.stockUnit) : 1.0;
+        if (phone) return _phoneLine(i, l, step);
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
@@ -418,7 +550,7 @@ class _BillingScreenState extends State<BillingScreen> {
               ),
               Expanded(flex: 2, child: _variantPicker(i, l)),
               IconButton.outlined(
-                tooltip: 'Less',
+                tooltip: t('Less', 'குறை'),
                 onPressed: () => s.setCount(i, roundQty(l.count - step)),
                 icon: const Icon(Icons.remove),
               ),
@@ -434,7 +566,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 ),
               ),
               IconButton.outlined(
-                tooltip: 'More',
+                tooltip: t('More', 'கூட்டு'),
                 onPressed: () => s.setCount(i, roundQty(l.count + step)),
                 icon: const Icon(Icons.add),
               ),
@@ -458,7 +590,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 ),
               ),
               IconButton(
-                tooltip: 'Remove',
+                tooltip: t('Remove', 'நீக்கு'),
                 onPressed: () => s.removeLine(i),
                 icon: const Icon(Icons.close, color: KadaiColors.danger),
               ),
@@ -466,6 +598,161 @@ class _BillingScreenState extends State<BillingScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// One bill line on a phone: name and size above, buttons below.
+  Widget _phoneLine(int i, BillLine l, double step) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 4, 6),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: TwoLang(l.product.nameEn, l.product.nameTa)),
+            Text(
+              rupees(l.total),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            IconButton(
+              tooltip: t('Remove', 'நீக்கு'),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => s.removeLine(i),
+              icon: const Icon(Icons.close, color: KadaiColors.danger),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(child: _variantPicker(i, l)),
+            IconButton.outlined(
+              tooltip: t('Less', 'குறை'),
+              onPressed: () => s.setCount(i, roundQty(l.count - step)),
+              icon: const Icon(Icons.remove),
+            ),
+            SizedBox(
+              width: 76,
+              child: Text(
+                l.quantityLabel,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            IconButton.outlined(
+              tooltip: t('More', 'கூட்டு'),
+              onPressed: () => s.setCount(i, roundQty(l.count + step)),
+              icon: const Icon(Icons.add),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  /// Quick items as one scrolling row on a phone.
+  Widget _quickStrip() {
+    final items = s.activeProducts.take(14).toList();
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) => ActionChip(
+          label: Text(
+            productName(items[i]),
+            style: const TextStyle(fontSize: 15),
+          ),
+          onPressed: () => s.addTap(items[i]),
+        ),
+      ),
+    );
+  }
+
+  /// Total with big pay buttons below it, for a phone.
+  Widget _phoneTotalBar() {
+    final count = s.bill.lines.length;
+    final off = count == 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: KadaiColors.quiet,
+                    ),
+                  ),
+                ),
+                Text(
+                  rupees(s.bill.total),
+                  style: const TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: FilledButton(
+                    onPressed: off ? null : () => _pay(PaymentMode.cash),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 56),
+                    ),
+                    child: Text(bi('Cash · பணம்')),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: off ? null : () => _pay(PaymentMode.upi),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 56),
+                    ),
+                    child: const Text('UPI'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: off ? null : () => _pay(PaymentMode.credit),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 56),
+                    ),
+                    child: Text(t('Credit', 'கடன்')),
+                  ),
+                ),
+              ],
+            ),
+            if (!off || s.pending.isNotEmpty)
+              TextButton(
+                onPressed: s.clearBill,
+                style: TextButton.styleFrom(
+                  foregroundColor: KadaiColors.danger,
+                ),
+                child: Text(t('Clear bill', 'பில் அழி')),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -500,7 +787,7 @@ class _BillingScreenState extends State<BillingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$count items · மொத்தம்',
+                  t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
                   style: const TextStyle(
                     fontSize: 14,
                     color: KadaiColors.quiet,
@@ -533,7 +820,7 @@ class _BillingScreenState extends State<BillingScreen> {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(150, 60),
                     ),
-                    child: const Text('Cash · பணம் (F12)'),
+                    child: Text(bi('Cash · பணம் (F12)')),
                   ),
                   OutlinedButton(
                     onPressed: count == 0 ? null : () => _pay(PaymentMode.upi),
@@ -549,7 +836,7 @@ class _BillingScreenState extends State<BillingScreen> {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(130, 60),
                     ),
-                    child: const Text('Credit · கடன்'),
+                    child: Text(bi('Credit · கடன்')),
                   ),
                   TextButton(
                     onPressed: count == 0 && s.pending.isEmpty
@@ -559,7 +846,7 @@ class _BillingScreenState extends State<BillingScreen> {
                       foregroundColor: KadaiColors.danger,
                       minimumSize: const Size(90, 60),
                     ),
-                    child: const Text('Clear (Esc)'),
+                    child: Text(t('Clear (Esc)', 'அழி (Esc)')),
                   ),
                 ],
               ),
@@ -575,10 +862,10 @@ class _BillingScreenState extends State<BillingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(bottom: 10),
           child: Text(
-            'Quick items · விரைவு',
+            bi('Quick items · விரைவு'),
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
         ),
@@ -600,7 +887,7 @@ class _BillingScreenState extends State<BillingScreen> {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () {
                       s.addTap(p);
-                      _inputFocus.requestFocus();
+                      _refocus();
                     },
                     child: Padding(
                       padding: const EdgeInsets.all(10),
@@ -654,10 +941,10 @@ class _BillingScreenState extends State<BillingScreen> {
   };
 
   static String _how(EntryMethod m) => switch (m) {
-    EntryMethod.voice => 'by voice',
-    EntryMethod.scan => 'scanned',
-    EntryMethod.typed => 'typed',
-    EntryMethod.tap => 'tapped',
+    EntryMethod.voice => t('by voice', 'குரல்'),
+    EntryMethod.scan => t('scanned', 'ஸ்கேன்'),
+    EntryMethod.typed => t('typed', 'தட்டச்சு'),
+    EntryMethod.tap => t('tapped', 'தொடுதல்'),
   };
 }
 
@@ -706,8 +993,14 @@ class _ConfirmCardState extends State<_ConfirmCard> {
               Expanded(
                 child: Text(
                   m.candidates.isEmpty
-                      ? 'Not found: "${m.spoken.text}". Which product? · எந்த பொருள்?'
-                      : 'Which one for "${m.spoken.text}" ($amount)? · எது?',
+                      ? tt(
+                          'Not found: "${m.spoken.text}". Which product?',
+                          '"${m.spoken.text}" கிடைக்கவில்லை. எந்த பொருள்?',
+                        )
+                      : tt(
+                          'Which one for "${m.spoken.text}" ($amount)?',
+                          '"${m.spoken.text}" ($amount) எது?',
+                        ),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -715,7 +1008,10 @@ class _ConfirmCardState extends State<_ConfirmCard> {
                   ),
                 ),
               ),
-              TextButton(onPressed: widget.onSkip, child: const Text('Skip')),
+              TextButton(
+                onPressed: widget.onSkip,
+                child: Text(t('Skip', 'வேண்டாம்')),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -734,21 +1030,21 @@ class _ConfirmCardState extends State<_ConfirmCard> {
                     ),
                   ),
                   child: Text(
-                    '${c.product.nameEn} · ${c.product.nameTa} · ${rupees(c.product.defaultVariant?.sellingPrice ?? c.product.sellingPrice)}',
+                    '${productName(c.product)} · ${rupees(c.product.defaultVariant?.sellingPrice ?? c.product.sellingPrice)}',
                   ),
                 ),
               OutlinedButton.icon(
                 onPressed: () => setState(() => _searching = !_searching),
                 style: OutlinedButton.styleFrom(backgroundColor: Colors.white),
                 icon: const Icon(Icons.search),
-                label: const Text('Other product'),
+                label: Text(t('Other product', 'வேறு பொருள்')),
               ),
             ],
           ),
           if (_searching) ...[
             const SizedBox(height: 10),
             Autocomplete<Product>(
-              displayStringForOption: (p) => '${p.nameEn} · ${p.nameTa}',
+              displayStringForOption: productName,
               optionsBuilder: (v) {
                 final q = v.text.toLowerCase();
                 if (q.isEmpty) return const Iterable<Product>.empty();
@@ -764,8 +1060,8 @@ class _ConfirmCardState extends State<_ConfirmCard> {
                 controller: c,
                 focusNode: f,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Search product · பொருள் தேடு',
+                decoration: InputDecoration(
+                  hintText: bi('Search product · பொருள் தேடு'),
                 ),
               ),
             ),
@@ -775,3 +1071,14 @@ class _ConfirmCardState extends State<_ConfirmCard> {
     );
   }
 }
+
+/// Payment mode in Tamil.
+String modeTa(PaymentMode m) => switch (m) {
+  PaymentMode.cash => 'பணம்',
+  PaymentMode.upi => 'UPI',
+  PaymentMode.credit => 'கடன்',
+};
+
+/// A product's name in the screen's language.
+String productName(Product p) =>
+    p.nameTa.isEmpty ? p.nameEn : tt(p.nameEn, p.nameTa);

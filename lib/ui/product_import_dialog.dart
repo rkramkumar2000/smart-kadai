@@ -1,31 +1,27 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import '../catalogue/product_import.dart';
+import 'save_file.dart';
 import 'theme.dart';
 
 /// Saves the sample product sheet for the owner to fill in Excel.
 Future<void> saveProductTemplate(BuildContext context) async {
-  final loc = await getSaveLocation(
-    suggestedName: 'smart-kadai-products.csv',
-    acceptedTypeGroups: const [
-      XTypeGroup(label: 'Excel (CSV)', extensions: ['csv']),
-    ],
+  final path = await saveCsv(
+    context,
+    'smart-kadai-products.csv',
+    importTemplateCsv(),
   );
-  if (loc == null) return;
-  // The byte-order mark makes Excel show Tamil names correctly.
-  await File(loc.path)
-      .writeAsBytes([0xEF, 0xBB, 0xBF, ...utf8.encode(importTemplateCsv())]);
+  if (path == null || isPhone) return;
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       duration: const Duration(seconds: 8),
       content: Text(
-        'Saved ${loc.path}. Open it in Excel, replace the example rows with '
+        'Saved $path. Open it in Excel, replace the example rows with '
         'your products, save, then click Import from Excel.',
         style: const TextStyle(fontSize: 15),
       ),
