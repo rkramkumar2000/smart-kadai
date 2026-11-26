@@ -610,14 +610,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 onPressed: () => s.setCount(i, roundQty(l.count + step)),
                 icon: const Icon(Icons.add),
               ),
-              SizedBox(
-                width: 90,
-                child: Text(
-                  rupees(l.unitPrice),
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(color: KadaiColors.quiet),
-                ),
-              ),
+              SizedBox(width: 100, child: _priceButton(i, l)),
               SizedBox(
                 width: 100,
                 child: Text(
@@ -641,6 +634,106 @@ class _BillingScreenState extends State<BillingScreen> {
     );
   }
 
+  /// The line's price. Tap it to type a different price for this bill.
+  Widget _priceButton(int i, BillLine l, {bool phone = false}) {
+    final changed = l.price != null;
+    return Tooltip(
+      message: t('Change price', 'விலை மாற்று'),
+      child: TextButton(
+        onPressed: () => _editPrice(i),
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.symmetric(horizontal: phone ? 6 : 8),
+          minimumSize: const Size(0, 40),
+          foregroundColor: changed ? KadaiColors.warnInk : KadaiColors.quiet,
+          backgroundColor: changed ? KadaiColors.warnTint : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                '@${rupees(l.unitPrice)}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.edit_outlined, size: 15),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Type a new price for one line, for this bill only.
+  Future<void> _editPrice(int i) async {
+    final l = s.bill.lines[i];
+    final c = TextEditingController(text: formatQty(l.unitPrice));
+    final per = l.variant?.label ?? '1 ${l.product.stockUnit.code}';
+    double? parse() => double.tryParse(c.text.trim());
+    final v = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tt('Change price', 'விலை மாற்று')),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TwoLang(l.product.nameEn, l.product.nameTa, size: 17),
+              const SizedBox(height: 12),
+              TextField(
+                controller: c,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                style: const TextStyle(fontSize: 22),
+                decoration: InputDecoration(
+                  prefixText: '₹ ',
+                  labelText: t('Price for $per', '$per விலை'),
+                ),
+                onTap: () => c.selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: c.text.length,
+                ),
+                onSubmitted: (_) => Navigator.pop(context, parse()),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t(
+                  'Only for this bill. The product price stays ${rupees(l.listPrice)}.',
+                  'இந்த பில்லுக்கு மட்டும். பொருளின் விலை ${rupees(l.listPrice)}.',
+                ),
+                style: const TextStyle(color: KadaiColors.quiet),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (l.price != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, -1),
+              child: Text(t('Back to ${rupees(l.listPrice)}', 'பழைய விலை')),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t('Cancel', 'ரத்து')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, parse()),
+            child: Text(t('OK', 'சரி')),
+          ),
+        ],
+      ),
+    );
+    // The controller is left to the garbage collector: the dialog may still
+    // be closing and using it.
+    if (v == null || i >= s.bill.lines.length) return;
+    s.setLinePrice(i, v < 0 ? null : v);
+    _refocus();
+  }
+
   /// One bill line on a phone: name and size above, buttons below.
   Widget _phoneLine(int i, BillLine l, double step) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 8, 4, 6),
@@ -650,6 +743,8 @@ class _BillingScreenState extends State<BillingScreen> {
         Row(
           children: [
             Expanded(child: TwoLang(l.product.nameEn, l.product.nameTa)),
+            _priceButton(i, l, phone: true),
+            const SizedBox(width: 6),
             Text(
               rupees(l.total),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),

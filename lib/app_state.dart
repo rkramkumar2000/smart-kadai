@@ -462,6 +462,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Changes one line's price on this bill only. Null or the list price
+  /// goes back to the list price.
+  void setLinePrice(int index, double? price) {
+    final l = bill.lines[index];
+    final p = price == null || price < 0 || price == l.listPrice ? null : price;
+    bill.lines[index] = l.withPrice(p);
+    notifyListeners();
+  }
+
   void removeLine(int index) {
     bill.lines.removeAt(index);
     notifyListeners();

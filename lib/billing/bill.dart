@@ -22,6 +22,7 @@ class BillLine {
     required this.enteredBy,
     this.spokenText,
     this.wholesale = false,
+    this.price,
   });
 
   final Product product;
@@ -37,9 +38,26 @@ class BillLine {
   /// Priced at the wholesale rate.
   final bool wholesale;
 
-  double get unitPrice =>
+  /// A price the owner typed for this bill only. Null uses the list price.
+  final double? price;
+
+  /// The list price for this line (retail or wholesale).
+  double get listPrice =>
       variant?.priceFor(wholesale: wholesale) ??
       product.priceFor(wholesale: wholesale);
+
+  double get unitPrice => price ?? listPrice;
+
+  /// Same line at a price typed by the owner. Null goes back to the list.
+  BillLine withPrice(double? p) => BillLine(
+    product: product,
+    variant: variant,
+    count: count,
+    enteredBy: enteredBy,
+    spokenText: spokenText,
+    wholesale: wholesale,
+    price: p,
+  );
 
   double get total => (unitPrice * count * 100).roundToDouble() / 100;
 
@@ -68,6 +86,7 @@ class BillLine {
     enteredBy: enteredBy,
     spokenText: spokenText,
     wholesale: wholesale,
+    price: price,
   );
 
   BillLine withWholesale(bool w) => BillLine(
