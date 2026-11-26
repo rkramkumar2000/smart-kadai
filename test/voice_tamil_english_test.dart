@@ -26,6 +26,9 @@ void main() {
     'ஷுகர்': 'Sugar',
     'சால்ட்': 'Salt',
     'மில்க்': 'Aavin Milk',
+    'ஆனியன்': 'Onion',
+    'ஆவின் மில்க்': 'Aavin Milk',
+    'ஆவின்': 'Aavin Milk',
   };
 
   heard.forEach((said, product) {
@@ -53,5 +56,48 @@ void main() {
       'Sunflower Oil',
       'Tea Powder',
     ]);
+  });
+
+  // Ram's screenshot: "ஆனியன் 1கே ஜி" was put down as Aavin Milk.
+  for (final said in ['ஆனியன் 1கே ஜி', 'ஆனியன் 1 கே.ஜி', 'ஆனியன் 1 கேஜி']) {
+    test('$said is 1 kg onion', () {
+      s.handleSpoken(said, EntryMethod.voice);
+      expect(s.pending, isEmpty);
+      final l = s.bill.lines.single;
+      expect(
+        '${l.product.nameEn} ${l.unitLabel} x${l.count}',
+        'Onion 1 KG x1.0',
+      );
+    });
+  }
+
+  test('one wrong tap does not make onion Aavin for ever', () {
+    final p = s.products.firstWhere((p) => p.nameEn == 'Aavin Milk');
+    s.repo.saveAlias('anian', p.id);
+    s.refresh();
+    s.handleSpoken('ஆனியன் 1 கிலோ', EntryMethod.voice);
+    expect(s.bill.lines.single.product.nameEn, 'Onion');
+  });
+
+  // Ram: "முட்டை" (egg) was heard but nothing was added, because it sounds
+  // like மூட்டை (a sack).
+  for (final (said, count) in [
+    ('முட்டை', 1.0),
+    ('muttai', 1.0),
+    ('10 முட்டை', 10.0),
+    ('ரெண்டு முட்டை', 2.0),
+  ]) {
+    test('$said is egg x$count', () {
+      s.handleSpoken(said, EntryMethod.voice);
+      expect(s.pending, isEmpty);
+      final l = s.bill.lines.single;
+      expect(l.product.nameEn, 'Egg');
+      expect(l.count, count);
+    });
+  }
+
+  test('a sack of rice is still a sack', () {
+    s.handleSpoken('ஒரு மூட்டை அரிசி', EntryMethod.voice);
+    expect(s.bill.lines.single.product.nameEn, 'Ponni Rice');
   });
 }

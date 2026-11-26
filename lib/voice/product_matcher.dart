@@ -10,10 +10,12 @@ import 'utterance_parser.dart';
 /// alias learned from the owner's corrections.
 class _NameEntry {
   _NameEntry(this.product, this.words)
-    : outline = [for (final w in words) consonantOutline(w)];
+    : outline = [for (final w in words) consonantOutline(w)],
+      shape = [for (final w in words) vowelShape(w)];
   final Product product;
   final List<String> words;
   final List<String> outline;
+  final List<String> shape;
 }
 
 class ProductCandidate {
@@ -91,6 +93,9 @@ class ProductMatcher {
   /// Below this, the product is treated as not found.
   static const minScore = 0.6;
 
+  /// A product name this close beats a remembered pick of another product.
+  static const overrideLearned = 0.93;
+
   /// Remembers that [spokenWords] meant [product], so the next time it is a
   /// sure match.
   void learn(List<String> spokenWords, Product product) {
@@ -100,21 +105,35 @@ class ProductMatcher {
   List<ProductCandidate> rank(List<String> spokenWords) {
     final best = <String, ProductCandidate>{};
     final learned = _learned[spokenWords.join(' ')];
-    if (learned != null) {
-      best[learned.id] = ProductCandidate(learned, 1.0);
-    }
     final spokenOutline = [for (final w in spokenWords) consonantOutline(w)];
     // Outlines of very short words ("egg" = k) match too much to trust.
     final useOutline =
         spokenWords.join().length >= 4 && spokenOutline.join().length >= 2;
+    final spokenShape = [for (final w in spokenWords) vowelShape(w)];
+    final useShape = spokenShape.join().length >= 4;
     for (final e in _entries) {
       var s = phraseSimilarity(spokenWords, e.words);
       if (useOutline && e.outline.join().length >= 2) {
         s = math.max(s, phraseSimilarity(spokenOutline, e.outline) * 0.96);
       }
+      // Same consonants with different vowels: ஆனியன் and onion.
+      if (useShape && e.shape.join().length >= 4) {
+        s = math.max(s, phraseSimilarity(spokenShape, e.shape) * 0.95);
+      }
       final cur = best[e.product.id];
       if (cur == null || s > cur.score) {
         best[e.product.id] = ProductCandidate(e.product, s);
+      }
+    }
+    // A remembered pick is used, unless another product's own name is a
+    // near-exact match: a wrong tap once must not hide "ஆனியன்" = Onion.
+    if (learned != null) {
+      final rival = best.values
+          .where((c) => c.product.id != learned.id)
+          .fold<double>(0, (m, c) => math.max(m, c.score));
+      final own = best[learned.id]?.score ?? 0;
+      if (rival < overrideLearned || rival - own < 0.1) {
+        best[learned.id] = ProductCandidate(learned, 1.0);
       }
     }
     final list = best.values.where((c) => c.score >= minScore).toList()

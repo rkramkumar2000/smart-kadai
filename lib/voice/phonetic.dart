@@ -100,6 +100,9 @@ String wordKey(String word) {
 /// ("250g" -> "250 g") and dropping punctuation.
 List<String> splitWords(String text) {
   final spaced = text
+      // Units spelled in Tamil letters: "1 கே ஜி" is 1 kg, "எம் எல்" is ml.
+      .replaceAll(RegExp(r'கே\s*\.?\s*ஜி\.?'), ' kg ')
+      .replaceAll(RegExp(r'எம்\s*\.?\s*எல்\.?'), ' ml ')
       .replaceAllMapped(RegExp(r'(\d)([^\d\s.,])'), (m) => '${m[1]} ${m[2]}')
       .replaceAllMapped(RegExp(r'([^\d\s.,])(\d)'), (m) => '${m[1]} ${m[2]}')
       .replaceAll(RegExp(r'[,;!?।]'), ' , ');
@@ -113,6 +116,19 @@ List<String> splitWords(String text) {
 /// Sound key for a whole phrase, words joined by single spaces.
 String phraseKey(String text) =>
     splitWords(text).map(wordKey).where((w) => w.isNotEmpty).join(' ');
+
+/// Vowel shape of a sound key: every run of vowels becomes "a" and doubled
+/// letters count once. Tamil writes the English "o" of onion, orange and oil
+/// with ஆ, so ஆனியன் (anian) and onion both have the shape "anan".
+String vowelShape(String key) {
+  final w = key.replaceAll(RegExp('[aeiou]+'), 'a');
+  final sb = StringBuffer();
+  for (var i = 0; i < w.length; i++) {
+    if (i > 0 && w[i] == w[i - 1]) continue;
+    sb.write(w[i]);
+  }
+  return sb.toString();
+}
 
 /// Consonant outline of a sound key: vowels, v and h removed. English names
 /// spoken in Tamil change the vowels and add some ("ground" is heard as

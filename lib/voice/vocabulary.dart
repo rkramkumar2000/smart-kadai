@@ -99,16 +99,17 @@ const Map<String, Unit> _unitWords = {
   'box': Unit.box,
   'boxes': Unit.box,
   'petti': Unit.box,
-  'மூட்டை': Unit.bag,
   'bag': Unit.bag,
   'bags': Unit.bag,
-  'mootai': Unit.bag,
-  'moottai': Unit.bag,
 };
 
 /// Short unit abbreviations, matched on the raw lower-case word because
 /// sound keys would mix them up (g and kg sound-fold to the same key).
+/// மூட்டை (sack) is here too: its sound key is the same as முட்டை (egg).
 const Map<String, Unit> abbreviationUnits = {
+  'மூட்டை': Unit.bag,
+  'mootai': Unit.bag,
+  'moottai': Unit.bag,
   'kg': Unit.kg,
   'kgs': Unit.kg,
   'g': Unit.gram,
