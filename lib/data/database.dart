@@ -16,7 +16,7 @@ class AppDatabase {
 
   final Database db;
 
-  static const _schemaVersion = 4;
+  static const _schemaVersion = 5;
 
   void _migrate() {
     final v = db.userVersion;
@@ -224,6 +224,15 @@ CREATE INDEX idx_expenses_day ON expenses(day);
 ALTER TABLE sales ADD COLUMN customer_id TEXT;
 ALTER TABLE sales ADD COLUMN discount REAL NOT NULL DEFAULT 0;
 CREATE INDEX idx_sales_customer ON sales(customer_id);
+''');
+    }
+    if (v < 5) {
+      // Wholesale prices and wholesale customers.
+      db.execute('''
+ALTER TABLE products ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0;
+ALTER TABLE product_variants ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN is_wholesale INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sales ADD COLUMN wholesale INTEGER NOT NULL DEFAULT 0;
 ''');
     }
     db.userVersion = _schemaVersion;

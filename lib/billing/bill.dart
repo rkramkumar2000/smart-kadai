@@ -21,6 +21,7 @@ class BillLine {
     required this.count,
     required this.enteredBy,
     this.spokenText,
+    this.wholesale = false,
   });
 
   final Product product;
@@ -33,7 +34,12 @@ class BillLine {
   final EntryMethod enteredBy;
   final String? spokenText;
 
-  double get unitPrice => variant?.sellingPrice ?? product.sellingPrice;
+  /// Priced at the wholesale rate.
+  final bool wholesale;
+
+  double get unitPrice =>
+      variant?.priceFor(wholesale: wholesale) ??
+      product.priceFor(wholesale: wholesale);
 
   double get total => (unitPrice * count * 100).roundToDouble() / 100;
 
@@ -61,6 +67,16 @@ class BillLine {
     count: c,
     enteredBy: enteredBy,
     spokenText: spokenText,
+    wholesale: wholesale,
+  );
+
+  BillLine withWholesale(bool w) => BillLine(
+    product: product,
+    variant: variant,
+    count: count,
+    enteredBy: enteredBy,
+    spokenText: spokenText,
+    wholesale: w,
   );
 
   BillLine withVariant(ProductVariant? v) => BillLine(
@@ -69,11 +85,23 @@ class BillLine {
     count: count,
     enteredBy: enteredBy,
     spokenText: spokenText,
+    wholesale: wholesale,
   );
 }
 
 class Bill {
   final List<BillLine> lines = [];
+
+  /// Wholesale bill: every line uses the wholesale price.
+  bool wholesale = false;
+
+  /// Switches the bill between retail and wholesale prices.
+  void setWholesale(bool w) {
+    wholesale = w;
+    for (var i = 0; i < lines.length; i++) {
+      lines[i] = lines[i].withWholesale(w);
+    }
+  }
 
   /// Rupees taken off the whole bill.
   double discount = 0;
@@ -97,6 +125,7 @@ class Bill {
   /// Adds [line], merging with an identical product and variant already on
   /// the bill so repeated scans increase the count.
   void add(BillLine line) {
+    if (line.wholesale != wholesale) line = line.withWholesale(wholesale);
     final i = lines.indexWhere(
       (l) =>
           l.product.id == line.product.id && l.variant?.id == line.variant?.id,

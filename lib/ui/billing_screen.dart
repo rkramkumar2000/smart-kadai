@@ -223,54 +223,87 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Widget _billOptions() {
     final b = s.bill;
+    final chips = <Widget>[
+      SegmentedButton<bool>(
+        showSelectedIcon: false,
+        segments: [
+          ButtonSegment(
+            value: false,
+            label: Text(t('Retail', 'சில்லறை')),
+            icon: const Icon(Icons.storefront_outlined),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Text(t('Wholesale', 'மொத்த விலை')),
+            icon: const Icon(Icons.local_shipping_outlined),
+          ),
+        ],
+        selected: {b.wholesale},
+        onSelectionChanged: (v) => s.setWholesale(v.first),
+      ),
+      InputChip(
+        avatar: const Icon(Icons.person_outline),
+        label: Text(
+          b.customerName.isEmpty
+              ? '${t('Customer', 'வாடிக்கையாளர்')}${_key('F4')}'
+              : b.customerName,
+          style: const TextStyle(fontSize: 15),
+        ),
+        onPressed: _customer,
+        onDeleted: b.customerName.isEmpty ? null : () => s.setCustomer(null),
+      ),
+      InputChip(
+        avatar: const Icon(Icons.percent),
+        label: Text(
+          b.discount == 0
+              ? '${t('Discount', 'தள்ளுபடி')}${_key('F6')}'
+              : '${rupees(b.discount)} ${t('off', 'தள்ளுபடி')}',
+          style: const TextStyle(fontSize: 15),
+        ),
+        onPressed: b.lines.isEmpty ? null : _discount,
+        onDeleted: b.discount == 0 ? null : () => s.setDiscount(0),
+      ),
+      ActionChip(
+        avatar: const Icon(Icons.pause_circle_outline),
+        label: Text(
+          '${t('Hold bill', 'பில் நிறுத்து')}${_key('F8')}',
+          style: const TextStyle(fontSize: 15),
+        ),
+        onPressed: b.lines.isEmpty ? null : s.holdBill,
+      ),
+      for (final (i, h) in s.held.indexed)
+        ActionChip(
+          backgroundColor: KadaiColors.warnTint,
+          avatar: const Icon(Icons.play_arrow),
+          label: Text(
+            '${t('Held', 'நிறுத்திய பில்')} ${i + 1}: '
+            '${h.customerName.isEmpty ? '${h.lines.length} ${t('items', 'பொருள்')}' : h.customerName}'
+            ' · ${rupees(h.total)}',
+            style: const TextStyle(fontSize: 15),
+          ),
+          onPressed: () => s.resumeBill(h),
+        ),
+    ];
+    // On a phone the options scroll sideways in one row, to leave room for
+    // the bill.
+    if (isNarrow(context)) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final (i, c) in chips.indexed) ...[
+              if (i > 0) const SizedBox(width: 8),
+              c,
+            ],
+          ],
+        ),
+      );
+    }
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        InputChip(
-          avatar: const Icon(Icons.person_outline),
-          label: Text(
-            b.customerName.isEmpty
-                ? '${t('Customer', 'வாடிக்கையாளர்')}${_key('F4')}'
-                : b.customerName,
-            style: const TextStyle(fontSize: 15),
-          ),
-          onPressed: _customer,
-          onDeleted: b.customerName.isEmpty ? null : () => s.setCustomer(null),
-        ),
-        InputChip(
-          avatar: const Icon(Icons.percent),
-          label: Text(
-            b.discount == 0
-                ? '${t('Discount', 'தள்ளுபடி')}${_key('F6')}'
-                : '${rupees(b.discount)} ${t('off', 'தள்ளுபடி')}',
-            style: const TextStyle(fontSize: 15),
-          ),
-          onPressed: b.lines.isEmpty ? null : _discount,
-          onDeleted: b.discount == 0 ? null : () => s.setDiscount(0),
-        ),
-        ActionChip(
-          avatar: const Icon(Icons.pause_circle_outline),
-          label: Text(
-            '${t('Hold bill', 'பில் நிறுத்து')}${_key('F8')}',
-            style: const TextStyle(fontSize: 15),
-          ),
-          onPressed: b.lines.isEmpty ? null : s.holdBill,
-        ),
-        for (final (i, h) in s.held.indexed)
-          ActionChip(
-            backgroundColor: KadaiColors.warnTint,
-            avatar: const Icon(Icons.play_arrow),
-            label: Text(
-              '${t('Held', 'நிறுத்திய பில்')} ${i + 1}: '
-              '${h.customerName.isEmpty ? '${h.lines.length} ${t('items', 'பொருள்')}' : h.customerName}'
-              ' · ${rupees(h.total)}',
-              style: const TextStyle(fontSize: 15),
-            ),
-            onPressed: () => s.resumeBill(h),
-          ),
-      ],
+      children: chips,
     );
   }
 
@@ -688,7 +721,8 @@ class _BillingScreenState extends State<BillingScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
+                    '${t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்')}'
+                    '${s.bill.wholesale ? ' · ${t('WHOLESALE', 'மொத்த விலை')}' : ''}',
                     style: const TextStyle(
                       fontSize: 14,
                       color: KadaiColors.quiet,
@@ -787,7 +821,8 @@ class _BillingScreenState extends State<BillingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்'),
+                  '${t('$count items · மொத்தம்', '$count பொருள் · மொத்தம்')}'
+                  '${s.bill.wholesale ? ' · ${t('WHOLESALE', 'மொத்த விலை')}' : ''}',
                   style: const TextStyle(
                     fontSize: 14,
                     color: KadaiColors.quiet,
@@ -916,7 +951,7 @@ class _BillingScreenState extends State<BillingScreen> {
                           Text(
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            '${rupees(p.defaultVariant?.sellingPrice ?? p.sellingPrice)} · ${p.defaultVariant?.label ?? p.stockUnit.code}',
+                            '${rupees(p.defaultVariant?.priceFor(wholesale: s.bill.wholesale) ?? p.priceFor(wholesale: s.bill.wholesale))} · ${p.defaultVariant?.label ?? p.stockUnit.code}',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,

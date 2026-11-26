@@ -11,6 +11,7 @@ class Customer {
     this.address = '',
     this.balance = 0,
     this.lastActivity,
+    this.isWholesale = false,
   });
 
   final String id;
@@ -19,6 +20,9 @@ class Customer {
   final String address;
   final double balance;
   final DateTime? lastActivity;
+
+  /// A shop or trader who buys at wholesale prices.
+  final bool isWholesale;
 }
 
 /// One row of a customer's account: a credit bill or a payment.
@@ -73,10 +77,11 @@ ORDER BY c.balance DESC, lower(c.name)''',
     final now = DateTime.now().toIso8601String();
     _db.execute(
       '''
-INSERT INTO customers (id, name, phone, address, balance, created_at, updated_at)
-VALUES (?,?,?,?,?,?,?)
+INSERT INTO customers (id, name, phone, address, balance, created_at, updated_at, is_wholesale)
+VALUES (?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
-  address = excluded.address, updated_at = excluded.updated_at''',
+  address = excluded.address, updated_at = excluded.updated_at,
+  is_wholesale = excluded.is_wholesale''',
       [
         c.id,
         c.name.trim(),
@@ -85,6 +90,7 @@ ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
         c.balance,
         now,
         now,
+        c.isWholesale ? 1 : 0,
       ],
     );
     return byId(c.id)!;
@@ -176,6 +182,7 @@ ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
     address: r['address'] as String,
     balance: (r['balance'] as num).toDouble(),
     lastActivity: DateTime.tryParse('${r['last'] ?? ''}'),
+    isWholesale: (r['is_wholesale'] as int? ?? 0) == 1,
   );
 }
 

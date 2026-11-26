@@ -250,6 +250,18 @@ class AppState extends ChangeNotifier {
         _say('${_taName(l)} நீக்கப்பட்டது', '${l.product.nameEn} removed');
       case VoiceCommand.total:
         _sayTotal();
+      case VoiceCommand.wholesale:
+        setWholesale(true);
+        _say(
+          'மொத்த விலை. ${_rs(bill.total)} ரூபாய்',
+          'Wholesale. Total ${_rs(bill.total)} rupees',
+        );
+      case VoiceCommand.retail:
+        setWholesale(false);
+        _say(
+          'சில்லறை விலை. ${_rs(bill.total)} ரூபாய்',
+          'Retail. Total ${_rs(bill.total)} rupees',
+        );
     }
   }
 
@@ -482,6 +494,14 @@ class AppState extends ChangeNotifier {
     bill.customerId = c?.id;
     bill.customerName = c?.name ?? '';
     bill.customerPhone = c?.phone ?? '';
+    // A wholesale customer's bill uses wholesale prices.
+    if (c != null && c.isWholesale) bill.setWholesale(true);
+    notifyListeners();
+  }
+
+  /// Retail or wholesale prices for the whole bill.
+  void setWholesale(bool w) {
+    bill.setWholesale(w);
     notifyListeners();
   }
 

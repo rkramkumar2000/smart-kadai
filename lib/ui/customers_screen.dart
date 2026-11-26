@@ -345,49 +345,65 @@ Future<Customer?> showCustomerDialog(
   final n = TextEditingController(text: c?.name ?? name);
   final ph = TextEditingController(text: c?.phone ?? '');
   final a = TextEditingController(text: c?.address ?? '');
+  var wholesale = c?.isWholesale ?? false;
   final ok = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(c == null ? 'Add customer' : 'Edit customer'),
-      content: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: n,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Name · பெயர்'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: ph,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Mobile number (for WhatsApp)',
+    builder: (context) => StatefulBuilder(
+      builder: (context, setLocal) => AlertDialog(
+        title: Text(c == null ? 'Add customer' : 'Edit customer'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: n,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name · பெயர்'),
               ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: a,
-              decoration: const InputDecoration(labelText: 'Street or area'),
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: ph,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile number (for WhatsApp)',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: a,
+                decoration: const InputDecoration(labelText: 'Street or area'),
+              ),
+              const SizedBox(height: 6),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(tt('Wholesale customer', 'மொத்த வியாபாரி')),
+                subtitle: Text(
+                  t(
+                    'Their bills use wholesale prices.',
+                    'இவருக்கு மொத்த விலை.',
+                  ),
+                ),
+                value: wholesale,
+                onChanged: (v) => setLocal(() => wholesale = v),
+              ),
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (n.text.trim().isEmpty) return;
+              Navigator.pop(context, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (n.text.trim().isEmpty) return;
-            Navigator.pop(context, true);
-          },
-          child: const Text('Save'),
-        ),
-      ],
     ),
   );
   Customer? saved;
@@ -399,6 +415,7 @@ Future<Customer?> showCustomerDialog(
         phone: ph.text,
         address: a.text,
         balance: c?.balance ?? 0,
+        isWholesale: wholesale,
       ),
     );
   }

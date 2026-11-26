@@ -32,22 +32,24 @@ class _VariantDraft {
     required String qty,
     required String price,
     required String cost,
+    String wholesale = '',
     required String barcode,
     required String factor,
     required this.isDefault,
   }) : qty = TextEditingController(text: qty),
        price = TextEditingController(text: price),
        cost = TextEditingController(text: cost),
+       wholesale = TextEditingController(text: wholesale),
        barcode = TextEditingController(text: barcode),
        factor = TextEditingController(text: factor);
 
   final String id;
   Unit unit;
   bool isDefault;
-  final TextEditingController qty, price, cost, barcode, factor;
+  final TextEditingController qty, price, cost, wholesale, barcode, factor;
 
   void dispose() {
-    for (final c in [qty, price, cost, barcode, factor]) {
+    for (final c in [qty, price, cost, wholesale, barcode, factor]) {
       c.dispose();
     }
   }
@@ -64,6 +66,7 @@ class _ProductFormState extends State<ProductForm> {
       _barcode,
       _cost,
       _price,
+      _wholesale,
       _min,
       _stock;
   late Unit _stockUnit;
@@ -88,6 +91,7 @@ class _ProductFormState extends State<ProductForm> {
     _barcode = TextEditingController(text: p?.barcode ?? '');
     _cost = TextEditingController(text: _num(p?.purchasePrice));
     _price = TextEditingController(text: _num(p?.sellingPrice));
+    _wholesale = TextEditingController(text: _num(p?.wholesalePrice));
     _min = TextEditingController(text: _num(p?.minStock));
     _stock = TextEditingController(text: _num(p?.stockQty));
     _stockUnit = p?.stockUnit ?? Unit.piece;
@@ -100,6 +104,7 @@ class _ProductFormState extends State<ProductForm> {
           qty: formatQty(v.quantity),
           price: _num(v.sellingPrice),
           cost: _num(v.purchasePrice),
+          wholesale: _num(v.wholesalePrice),
           barcode: v.barcode ?? '',
           factor: formatQty(v.stockFactor),
           isDefault: v.isDefault,
@@ -113,7 +118,7 @@ class _ProductFormState extends State<ProductForm> {
   void dispose() {
     for (final c in [
       _en, _ta, _tanglish, _category, _brand, _desc, _barcode, _cost, //
-      _price, _min, _stock,
+      _price, _wholesale, _min, _stock,
     ]) {
       c.dispose();
     }
@@ -145,6 +150,7 @@ class _ProductFormState extends State<ProductForm> {
           qty: '1',
           price: _price.text,
           cost: _cost.text,
+          wholesale: _wholesale.text,
           barcode: '',
           factor: '1',
           isDefault: _variants.isEmpty,
@@ -202,6 +208,7 @@ class _ProductFormState extends State<ProductForm> {
           stockFactor: factor,
           sellingPrice: _parse(d.price.text),
           purchasePrice: _parse(d.cost.text),
+          wholesalePrice: _parse(d.wholesale.text),
           barcode: d.barcode.text.trim(),
           isDefault: d.isDefault,
           sort: i,
@@ -217,12 +224,16 @@ class _ProductFormState extends State<ProductForm> {
     // and Tanglish comes from the Tamil (or English) name.
     var price = _parse(_price.text);
     var cost = _parse(_cost.text);
+    var wholesale = _parse(_wholesale.text);
     final usual = variants.isEmpty
         ? null
         : variants.firstWhere((v) => v.isDefault, orElse: () => variants[0]);
     if (usual != null && usual.stockFactor > 0) {
       if (price == 0) price = roundQty(usual.sellingPrice / usual.stockFactor);
       if (cost == 0) cost = roundQty(usual.purchasePrice / usual.stockFactor);
+      if (wholesale == 0) {
+        wholesale = roundQty(usual.wholesalePrice / usual.stockFactor);
+      }
     }
     for (final (i, v) in variants.indexed) {
       variants[i] = v.copyWith(
@@ -232,6 +243,9 @@ class _ProductFormState extends State<ProductForm> {
         purchasePrice: v.purchasePrice == 0
             ? roundQty(cost * v.stockFactor)
             : v.purchasePrice,
+        wholesalePrice: v.wholesalePrice == 0
+            ? roundQty(wholesale * v.stockFactor)
+            : v.wholesalePrice,
       );
     }
     if (price == 0 && variants.every((v) => v.sellingPrice == 0)) {
@@ -258,6 +272,7 @@ class _ProductFormState extends State<ProductForm> {
       barcode: _barcode.text.trim(),
       purchasePrice: cost,
       sellingPrice: price,
+      wholesalePrice: wholesale,
       minStock: _parse(_min.text),
       stockUnit: _stockUnit,
       stockQty: base?.stockQty ?? _parse(_stock.text),
@@ -350,6 +365,11 @@ class _ProductFormState extends State<ProductForm> {
                         _field(
                           _price,
                           'Selling price per $_unitName (₹)',
+                          number: true,
+                        ),
+                        _field(
+                          _wholesale,
+                          'Wholesale price per $_unitName (₹, optional)',
                           number: true,
                         ),
                       ]),
@@ -534,6 +554,8 @@ class _ProductFormState extends State<ProductForm> {
           const SizedBox(width: 8),
           Expanded(child: _field(v.price, 'Selling ₹', number: true)),
           const SizedBox(width: 8),
+          Expanded(child: _field(v.wholesale, 'Wholesale ₹', number: true)),
+          const SizedBox(width: 8),
           Expanded(child: _field(v.cost, 'Purchase ₹', number: true)),
           const SizedBox(width: 8),
           Expanded(flex: 2, child: _field(v.barcode, 'Barcode', scan: true)),
@@ -658,6 +680,10 @@ class _ProductFormState extends State<ProductForm> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: _field(v.price, 'Selling ₹', number: true)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _field(v.wholesale, 'Wholesale ₹', number: true),
+                ),
                 const SizedBox(width: 8),
                 Expanded(child: _field(v.cost, 'Purchase ₹', number: true)),
                 const SizedBox(width: 4),

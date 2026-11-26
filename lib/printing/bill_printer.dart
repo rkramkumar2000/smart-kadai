@@ -119,6 +119,7 @@ Future<Uint8List> buildBillPdf(
             ],
           ),
           if (b.cashier.isNotEmpty) pw.Text('By ${b.cashier}', style: small),
+          if (b.bill.wholesale) pw.Text('WHOLESALE BILL', style: bold),
           if (b.bill.customerName.isNotEmpty)
             pw.Text('Customer: ${_latin(b.bill.customerName)}', style: body),
           pw.Divider(thickness: 0.5),
@@ -245,7 +246,7 @@ String billText(SavedBill b, String shopName) {
   final out = StringBuffer()
     ..writeln('*$shopName*')
     ..writeln(
-      'Bill ${b.number} · ${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}',
+      '${b.bill.wholesale ? 'Wholesale ' : ''}Bill ${b.number} · ${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}',
     )
     ..writeln();
   for (final l in b.bill.lines) {

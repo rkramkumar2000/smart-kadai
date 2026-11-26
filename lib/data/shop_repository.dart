@@ -51,6 +51,7 @@ class ShopRepository {
               stockFactor: (r['stock_factor'] as num).toDouble(),
               sellingPrice: (r['selling_price'] as num).toDouble(),
               purchasePrice: (r['purchase_price'] as num).toDouble(),
+              wholesalePrice: (r['wholesale_price'] as num).toDouble(),
               barcode: r['barcode'] as String?,
               isDefault: (r['is_default'] as int) == 1,
               sort: r['sort'] as int,
@@ -72,6 +73,7 @@ class ShopRepository {
             barcode: r['barcode'] as String?,
             purchasePrice: (r['purchase_price'] as num).toDouble(),
             sellingPrice: (r['selling_price'] as num).toDouble(),
+            wholesalePrice: (r['wholesale_price'] as num).toDouble(),
             minStock: (r['min_stock'] as num).toDouble(),
             stockUnit: Unit.fromCode(r['stock_unit'] as String),
             stockQty: (r['stock_qty'] as num).toDouble(),
@@ -102,14 +104,15 @@ class ShopRepository {
         '''
 INSERT INTO products (id, code, name_en, name_ta, name_tanglish, category,
   brand, description, barcode, purchase_price, selling_price, min_stock,
-  stock_unit, stock_qty, status, created_at, updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  stock_unit, stock_qty, status, created_at, updated_at, wholesale_price)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET
   code=excluded.code, name_en=excluded.name_en, name_ta=excluded.name_ta,
   name_tanglish=excluded.name_tanglish, category=excluded.category,
   brand=excluded.brand, description=excluded.description,
   barcode=excluded.barcode, purchase_price=excluded.purchase_price,
   selling_price=excluded.selling_price, min_stock=excluded.min_stock,
+  wholesale_price=excluded.wholesale_price,
   stock_unit=excluded.stock_unit, status=excluded.status,
   updated_at=excluded.updated_at
 ''',
@@ -118,7 +121,7 @@ ON CONFLICT(id) DO UPDATE SET
           p.brand, p.description, _blankToNull(p.barcode), p.purchasePrice,
           p.sellingPrice, p.minStock, p.stockUnit.code, p.stockQty,
           p.status.code, p.createdAt.toIso8601String(),
-          p.updatedAt.toIso8601String(),
+          p.updatedAt.toIso8601String(), p.wholesalePrice,
         ],
       );
       final keep = p.variants.map((v) => v.id).toList();
@@ -134,18 +137,19 @@ ON CONFLICT(id) DO UPDATE SET
       }
       final stmt = _db.prepare('''
 INSERT INTO product_variants (id, product_id, unit, quantity, stock_factor,
-  selling_price, purchase_price, barcode, is_default, sort)
-VALUES (?,?,?,?,?,?,?,?,?,?)
+  selling_price, purchase_price, barcode, is_default, sort, wholesale_price)
+VALUES (?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET unit=excluded.unit, quantity=excluded.quantity,
   stock_factor=excluded.stock_factor, selling_price=excluded.selling_price,
   purchase_price=excluded.purchase_price, barcode=excluded.barcode,
-  is_default=excluded.is_default, sort=excluded.sort
+  is_default=excluded.is_default, sort=excluded.sort,
+  wholesale_price=excluded.wholesale_price
 ''');
       for (final v in p.variants) {
         stmt.execute([
           v.id, p.id, v.unit.code, v.quantity, v.stockFactor, //
           v.sellingPrice, v.purchasePrice, _blankToNull(v.barcode),
-          v.isDefault ? 1 : 0, v.sort,
+          v.isDefault ? 1 : 0, v.sort, v.wholesalePrice,
         ]);
       }
       stmt.close();
@@ -276,10 +280,10 @@ VALUES (?,?,?,?,?,?,?,?,?)''',
       final saleId = newId();
       final now = DateTime.now().toIso8601String();
       _db.execute(
-        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id, customer_id, discount) VALUES (?,?,?,?,?,?,?,?)',
+        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id, customer_id, discount, wholesale) VALUES (?,?,?,?,?,?,?,?,?)',
         [
           saleId, billNo, now, bill.total, mode.code, userId, //
-          bill.customerId, bill.discount,
+          bill.customerId, bill.discount, bill.wholesale ? 1 : 0,
         ],
       );
       if (mode == PaymentMode.credit) {

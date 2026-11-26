@@ -23,6 +23,7 @@ const importColumns = [
   'Barcode',
   'Stock',
   'Minimum stock',
+  'Wholesale price',
 ];
 
 /// A sheet the owner can fill in Excel, with example rows.
@@ -31,21 +32,24 @@ String importTemplateCsv() {
     importColumns,
     [
       'Groundnut', 'கடலை', 'Kadalai', 'Pulses', '', 'KG', '1', 'KG', //
-      '140', '120', '', '25', '5',
+      '140', '120', '', '25', '5', '132',
     ],
     [
       'Groundnut', '', '', '', '', '', '500', 'GRAM', '72', '61', '', '', '', //
+      '68',
     ],
     [
       'Groundnut', '', '', '', '', '', '250', 'GRAM', '37', '31', '', '', '', //
+      '35',
     ],
     [
       'Dove Soap', 'டவ் சோப்', 'Dove', 'Soap', 'Dove', 'PIECE', '1', //
-      'PIECE', '55', '47', '8901030000000', '24', '6',
+      'PIECE', '55', '47', '8901030000000', '24', '6', '50',
     ],
     [
       'Aachi Chilli Powder', 'ஆச்சி மிளகாய் தூள்', 'Milagai thool', //
-      'Masala', 'Aachi', 'PACKET', '1', 'PACKET', '45', '38', '', '20', '5',
+      'Masala', 'Aachi', 'PACKET', '1', 'PACKET', '45', '38', '', '20', '5', //
+      '42',
     ],
   ];
   return rows.map((r) => r.map(_csvCell).join(',')).join('\r\n');
@@ -250,7 +254,7 @@ ImportResult buildImport(
     }
 
     // Sizes.
-    final sizes = <(Unit, double, double, double, String)>[];
+    final sizes = <(Unit, double, double, double, double, String)>[];
     var bad = false;
     for (final (rowNo, r) in g) {
       final unitText = cell(r, 'Size unit');
@@ -271,7 +275,8 @@ ImportResult buildImport(
         continue;
       }
       final buy = _num(cell(r, 'Purchase price')) ?? 0;
-      sizes.add((u, qty, sell, buy, cell(r, 'Barcode')));
+      final whole = _num(cell(r, 'Wholesale price')) ?? 0;
+      sizes.add((u, qty, sell, buy, whole, cell(r, 'Barcode')));
     }
     if (sizes.isEmpty) {
       if (!bad) problems.add('$nameEn: no size with a price');
@@ -284,7 +289,7 @@ ImportResult buildImport(
     final id = old?.id ?? newId();
     final variants = <ProductVariant>[];
     for (final (i, s) in sizes.indexed) {
-      final (u, qty, sell, buy, barcode) = s;
+      final (u, qty, sell, buy, whole, barcode) = s;
       final factor =
           ProductVariant.autoStockFactor(u, qty, stockUnit) ??
           (u == stockUnit ? qty : 1);
@@ -300,6 +305,7 @@ ImportResult buildImport(
           stockFactor: factor,
           sellingPrice: sell,
           purchasePrice: buy,
+          wholesalePrice: whole,
           barcode: barcode.isEmpty ? null : barcode,
           isDefault: i == 0,
           sort: i,
@@ -328,6 +334,7 @@ ImportResult buildImport(
         stockUnit: stockUnit,
         sellingPrice: roundQty(variants.first.sellingPrice / f),
         purchasePrice: roundQty(variants.first.purchasePrice / f),
+        wholesalePrice: roundQty(variants.first.wholesalePrice / f),
         minStock: _num(minText) ?? old?.minStock ?? 0,
         stockQty: _num(stockText) ?? old?.stockQty ?? 0,
         createdAt: old?.createdAt ?? now,

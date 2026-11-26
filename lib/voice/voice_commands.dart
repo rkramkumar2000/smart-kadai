@@ -20,6 +20,12 @@ enum VoiceCommand {
 
   /// Say the total aloud: "total", "மொத்தம் எவ்வளவு".
   total,
+
+  /// Wholesale prices for this bill: "wholesale", "ஹோல்சேல்".
+  wholesale,
+
+  /// Retail prices for this bill: "retail", "சில்லறை".
+  retail,
 }
 
 const _phrases = <VoiceCommand, List<String>>{
@@ -52,6 +58,14 @@ const _phrases = <VoiceCommand, List<String>>{
     'total', 'டோட்டல்', 'மொத்தம்', 'mottham', 'motham', 'mothama', //
     'எவ்வளவு', 'evvalavu', 'evlo', 'எவ்ளோ', 'மொத்தம் எவ்வளவு',
     'total evlo', 'how much',
+  ],
+  VoiceCommand.wholesale: [
+    'wholesale', 'ஹோல்சேல்', 'ஹோல் சேல்', 'wholesale bill', 'mothavilai', //
+    'motha vilai', 'மொத்த விலை', 'மொத்த வியாபாரம்',
+  ],
+  VoiceCommand.retail: [
+    'retail', 'ரீடெயில்', 'சில்லறை', 'chillarai', 'sillarai', 'retail bill', //
+    'சில்லறை விலை',
   ],
 };
 
