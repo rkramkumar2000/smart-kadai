@@ -185,8 +185,9 @@ void main() {
     await t.pump();
     // Windows takes a few seconds to say nobody is there.
     for (var i = 0; i < 60; i++) {
-      if (find.textContaining('when Wi-Fi is back').evaluate().isNotEmpty)
+      if (find.textContaining('when Wi-Fi is back').evaluate().isNotEmpty) {
         break;
+      }
       await wait(t, 200);
     }
     expect(find.textContaining('when Wi-Fi is back'), findsOneWidget);
