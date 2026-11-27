@@ -63,7 +63,7 @@ void main() {
       await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
-      await t.pump(const Duration(milliseconds: 20));
+      await t.pump(const Duration(milliseconds: 100));
     }
   }
 
@@ -165,7 +165,10 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('Cash · பணம்').hitTestable().first);
     await t.pump();
-    await wait(t, 1500);
+    for (var i = 0; i < 60; i++) {
+      if (find.textContaining('Bill 1 saved').evaluate().isNotEmpty) break;
+      await wait(t, 200);
+    }
     expect(pc.today.bills, 1);
     expect(find.textContaining('Bill 1 saved'), findsOneWidget);
     final row = pc.repo.db.select('SELECT * FROM sales').single;
@@ -180,17 +183,27 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('Cash · பணம்').hitTestable().first);
     await t.pump();
-    await wait(t, 6000);
+    // Windows takes a few seconds to say nobody is there.
+    for (var i = 0; i < 60; i++) {
+      if (find.textContaining('when Wi-Fi is back').evaluate().isNotEmpty)
+        break;
+      await wait(t, 200);
+    }
     expect(find.textContaining('when Wi-Fi is back'), findsOneWidget);
     expect(s.link!.waitingBills, 1);
     expect(find.byIcon(Icons.cloud_off_outlined), findsWidgets);
     await t.runAsync(
       () => pc.server!.start(address: InternetAddress.loopbackIPv4),
     );
-    await t.runAsync(() => s.link!.syncNow());
-    await t.pumpAndSettle();
+    // The phone sends it by itself within a few seconds.
+    for (var i = 0; i < 100 && s.link!.waitingBills > 0; i++) {
+      await wait(t, 200);
+    }
     expect(pc.today.bills, 2);
     expect(s.link!.waitingBills, 0);
     phone.value.dispose();
+    // Let the last timers (messages, the old shop's clean-up) run out.
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 15));
   });
 }
