@@ -4,6 +4,7 @@ import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../data/shop_repository.dart';
 import '../voice/phonetic.dart';
+import '../voice/product_voice.dart';
 import 'barcode_scan.dart';
 import 'save_file.dart' show isPhone;
 import 'theme.dart';
@@ -15,11 +16,15 @@ class ProductForm extends StatefulWidget {
     required this.repo,
     required this.product,
     required this.categories,
+    this.spoken,
   });
 
   final ShopRepository repo;
   final Product? product;
   final List<String> categories;
+
+  /// A new product said aloud: its name, size and price fill the form.
+  final SpokenProduct? spoken;
 
   @override
   State<ProductForm> createState() => _ProductFormState();
@@ -111,7 +116,16 @@ class _ProductFormState extends State<ProductForm> {
         ),
       );
     }
+    final sp = widget.spoken;
+    if (p == null && sp != null) _fillFromVoice(sp);
     if (_variants.isEmpty) _addVariant();
+    if (p == null && sp != null && sp.size != null && sp.unit != null) {
+      final v = _variants.first;
+      v.unit = sp.unit!;
+      v.qty.text = formatQty(sp.size!);
+      v.price.text = sp.price == null ? '' : formatQty(sp.price!);
+      v.factor.text = '1';
+    }
   }
 
   @override
@@ -126,6 +140,32 @@ class _ProductFormState extends State<ProductForm> {
       v.dispose();
     }
     super.dispose();
+  }
+
+  /// "Aavin milk 500 ml 28 rupees": English or Tamil name, the stock unit
+  /// from the size (KG for grams, LITRE for ml), and the price.
+  void _fillFromVoice(SpokenProduct sp) {
+    String title(String w) =>
+        w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase();
+    if (sp.isTamil) {
+      _ta.text = sp.name;
+      _en.text = transliterateTamil(sp.name).split(' ').map(title).join(' ');
+    } else {
+      _en.text = sp.name.split(' ').map(title).join(' ');
+    }
+    final u = sp.unit;
+    if (u != null) {
+      _stockUnit = switch (u) {
+        Unit.gram || Unit.kg => Unit.kg,
+        Unit.ml || Unit.litre => Unit.litre,
+        _ => u,
+      };
+      if (sp.size == null && sp.price != null) {
+        _price.text = formatQty(sp.price!);
+      }
+    } else if (sp.price != null) {
+      _price.text = formatQty(sp.price!);
+    }
   }
 
   static String _num(double? v) => v == null || v == 0 ? '' : formatQty(v);

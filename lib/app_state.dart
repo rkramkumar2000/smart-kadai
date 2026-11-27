@@ -11,6 +11,7 @@ import 'customers/customers.dart';
 import 'data/shop_repository.dart';
 import 'purchases/purchases.dart';
 import 'reports/reports.dart';
+import 'voice/phonetic.dart';
 import 'voice/product_matcher.dart';
 import 'voice/speech_service.dart';
 import 'voice/utterance_parser.dart';
@@ -194,9 +195,28 @@ class AppState extends ChangeNotifier {
     listening ? await speech.stop() : await speech.start();
   }
 
+  /// While set, finished phrases go here instead of onto the bill. The
+  /// Products screen uses it to find or add a product by voice.
+  void Function(String text)? voiceCapture;
+
+  /// Products whose names sound like [name], best first.
+  List<Product> findByVoice(String name) => [
+    for (final c in _matcher.rank(
+      splitWords(name).map(wordKey).where((k) => k.isNotEmpty).toList(),
+    ))
+      c.product,
+  ];
+
   void _onSpeech(SpeechResult r) {
     if (!r.isFinal) {
       heard = r.text;
+      notifyListeners();
+      return;
+    }
+    final capture = voiceCapture;
+    if (capture != null) {
+      heard = r.text;
+      capture(r.text);
       notifyListeners();
       return;
     }

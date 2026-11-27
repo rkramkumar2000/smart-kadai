@@ -2,6 +2,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import '../catalogue/product.dart';
+import '../core/units.dart';
+import '../voice/product_voice.dart';
 import 'product_form.dart';
 import 'product_import_dialog.dart';
 import 'theme.dart';
@@ -19,10 +21,147 @@ class ProductsScreen extends StatefulWidget {
 
 class _ProductsScreenState extends State<ProductsScreen> {
   String _query = '';
+  final _search = TextEditingController();
+
+  /// Listening for a product name.
+  bool _voiceOn = false;
+
+  /// Whether this screen switched the mic on, so it switches it off again.
+  bool _startedMic = false;
+
+  /// What was said and what it found.
+  SpokenProduct? _spoken;
+  List<Product> _found = const [];
   String? _category;
   bool _showInactive = false;
 
   AppState get s => widget.state;
+
+  @override
+  void dispose() {
+    if (s.voiceCapture == _onHeard) s.voiceCapture = null;
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Mic on the Products screen: the next thing said finds a product.
+  Future<void> _voice() async {
+    if (_voiceOn) {
+      await _stopVoice();
+      return;
+    }
+    s.voiceCapture = _onHeard;
+    setState(() {
+      _voiceOn = true;
+      _spoken = null;
+      _found = const [];
+    });
+    if (!s.listening) {
+      _startedMic = true;
+      await s.toggleListening();
+    }
+  }
+
+  Future<void> _stopVoice() async {
+    if (s.voiceCapture == _onHeard) s.voiceCapture = null;
+    if (_startedMic && s.listening) await s.toggleListening();
+    _startedMic = false;
+    if (mounted) setState(() => _voiceOn = false);
+  }
+
+  void _onHeard(String text) {
+    final sp = parseSpokenProduct(text);
+    final found = sp.name.isEmpty ? <Product>[] : s.findByVoice(sp.name);
+    _stopVoice();
+    setState(() {
+      _spoken = sp;
+      _found = found;
+      _query = '';
+      _search.clear();
+    });
+  }
+
+  /// What was heard, the products it sounds like, and "Add as new".
+  Widget _voiceCard() {
+    final sp = _spoken;
+    if (!_voiceOn && sp == null) return const SizedBox.shrink();
+    return Card(
+      color: KadaiColors.greenTint,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.graphic_eq, color: KadaiColors.green),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    sp == null
+                        ? (s.heard.isEmpty || !_voiceOn
+                              ? t(
+                                  'Say a product name, or a new product with size and price: "Aavin milk 500 ml 28 rupees"',
+                                  'பொருளின் பெயரை சொல்லுங்கள். புதிய பொருள்: "ஆவின் பால் 500 மில்லி 28 ரூபாய்"',
+                                )
+                              : '"${s.heard}"')
+                        : '${t('Heard', 'கேட்டது')}: "${sp.name}"'
+                              '${sp.size != null ? ' · ${formatQty(sp.size!)} ${sp.unit!.code}' : ''}'
+                              '${sp.price != null ? ' · ${rupees(sp.price!)}' : ''}',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+                IconButton(
+                  tooltip: t('Close', 'மூடு'),
+                  onPressed: () {
+                    _stopVoice();
+                    setState(() => _spoken = null);
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            if (sp != null) ...[
+              const SizedBox(height: 8),
+              if (_found.isNotEmpty)
+                Text(
+                  t('Tap to change it:', 'மாற்ற தொடுங்கள்:'),
+                  style: const TextStyle(color: KadaiColors.quiet),
+                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final p in _found)
+                    ActionChip(
+                      avatar: const Icon(Icons.edit_outlined, size: 18),
+                      label: Text(
+                        '${p.nameEn} · ${p.nameTa} · ${rupees(p.sellingPrice)}',
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                      onPressed: s.user?.canEditProducts == false
+                          ? null
+                          : () => _edit(p),
+                    ),
+                  if (s.user?.canEditProducts != false && sp.name.isNotEmpty)
+                    FilledButton.icon(
+                      onPressed: () => _edit(null, spoken: sp),
+                      icon: const Icon(Icons.add),
+                      label: Text(
+                        t(
+                          'Add "${sp.name}" as new',
+                          '"${sp.name}" புதிதாக சேர்',
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   List<Product> _filtered() {
     final q = _query.trim().toLowerCase();
@@ -40,15 +179,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }).toList();
   }
 
-  Future<void> _edit(Product? p) async {
+  Future<void> _edit(Product? p, {SpokenProduct? spoken}) async {
     final result = await showDialog<Product>(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          ProductForm(repo: s.repo, product: p, categories: _categories()),
+      builder: (_) => ProductForm(
+        repo: s.repo,
+        product: p,
+        categories: _categories(),
+        spoken: spoken,
+      ),
     );
     if (result != null) {
       s.saveProduct(result);
+      if (mounted) setState(() => _spoken = null);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -115,14 +259,45 @@ class _ProductsScreenState extends State<ProductsScreen> {
                 ],
               ),
               const SizedBox(height: 14),
-              TextField(
-                style: const TextStyle(fontSize: 17),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search by English, Tamil or Tanglish name, ID or barcode',
-                ),
-                onChanged: (v) => setState(() => _query = v),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _search,
+                      style: const TextStyle(fontSize: 17),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: isNarrow(context)
+                            ? t('Search product', 'பொருள் தேடு')
+                            : 'Search by English, Tamil or Tanglish name, ID or barcode',
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 56,
+                    width: 64,
+                    child: Tooltip(
+                      message: t('Find by voice', 'குரலில் தேடு'),
+                      child: FilledButton(
+                        onPressed: _voice,
+                        style: FilledButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          backgroundColor: _voiceOn
+                              ? KadaiColors.danger
+                              : KadaiColors.green,
+                        ),
+                        child: Icon(
+                          _voiceOn ? Icons.stop : Icons.mic,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              _voiceCard(),
               const SizedBox(height: 12),
               _chipRow(context, [
                 ChoiceChip(
