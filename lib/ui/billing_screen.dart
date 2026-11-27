@@ -11,6 +11,7 @@ import '../printing/bill_printer.dart';
 import '../voice/product_matcher.dart';
 import 'barcode_scan.dart';
 import 'customers_screen.dart';
+import 'hold_mic.dart';
 import 'save_file.dart' show isPhone;
 import 'theme.dart';
 import 'upi_qr.dart';
@@ -330,9 +331,10 @@ class _BillingScreenState extends State<BillingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CallbackShortcuts(
+    final screen = CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.f2): _voice,
+        if (!s.holdToSpeak)
+          const SingleActivator(LogicalKeyboardKey.f2): _voice,
         const SingleActivator(LogicalKeyboardKey.f12): () =>
             _pay(PaymentMode.cash),
         const SingleActivator(LogicalKeyboardKey.escape): s.clearBill,
@@ -359,6 +361,21 @@ class _BillingScreenState extends State<BillingScreen> {
                 ),
               ),
       ),
+    );
+    if (!s.holdToSpeak) return screen;
+    // Hold to speak on a PC: hold F2 down while speaking.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, e) {
+        if (e.logicalKey != LogicalKeyboardKey.f2) {
+          return KeyEventResult.ignored;
+        }
+        if (e is KeyDownEvent) s.holdStart();
+        if (e is KeyUpEvent) s.holdEnd();
+        return KeyEventResult.handled;
+      },
+      child: screen,
     );
   }
 
@@ -404,47 +421,61 @@ class _BillingScreenState extends State<BillingScreen> {
               SizedBox(
                 height: 60,
                 width: 72,
-                child: FilledButton(
-                  onPressed: _voice,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: s.listening
-                        ? KadaiColors.danger
-                        : KadaiColors.green,
-                    padding: EdgeInsets.zero,
+                child: HoldMic(
+                  state: s,
+                  child: FilledButton(
+                    onPressed: s.holdToSpeak ? () {} : _voice,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: s.listening
+                          ? KadaiColors.danger
+                          : KadaiColors.green,
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: Icon(
+                      s.listening && !s.holdToSpeak ? Icons.stop : Icons.mic,
+                      size: 32,
+                    ),
                   ),
-                  child: Icon(s.listening ? Icons.stop : Icons.mic, size: 32),
                 ),
               )
             else
               SizedBox(
                 height: 60,
-                child: FilledButton.icon(
-                  onPressed: _voice,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: s.listening
-                        ? KadaiColors.danger
-                        : KadaiColors.green,
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                  ),
-                  icon: Icon(s.listening ? Icons.stop : Icons.mic, size: 28),
-                  label: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        s.listening
-                            ? t('Listening…', 'கேட்கிறது…')
-                            : t('Speak', 'பேசு'),
-                        style: const TextStyle(fontSize: 17),
-                      ),
-                      const Text(
-                        'F2 · பேசுங்கள்',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
+                child: HoldMic(
+                  state: s,
+                  child: FilledButton.icon(
+                    onPressed: s.holdToSpeak ? () {} : _voice,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: s.listening
+                          ? KadaiColors.danger
+                          : KadaiColors.green,
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                    ),
+                    icon: Icon(
+                      s.listening && !s.holdToSpeak ? Icons.stop : Icons.mic,
+                      size: 28,
+                    ),
+                    label: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          s.listening
+                              ? t('Listening…', 'கேட்கிறது…')
+                              : s.holdToSpeak
+                              ? t('Hold to speak', 'பிடித்து பேசு')
+                              : t('Speak', 'பேசு'),
+                          style: const TextStyle(fontSize: 17),
                         ),
-                      ),
-                    ],
+                        Text(
+                          s.holdToSpeak ? 'Hold F2' : 'F2 · பேசுங்கள்',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -476,10 +507,22 @@ class _BillingScreenState extends State<BillingScreen> {
                                   'Voice window is closed. Click Speak to open it in Chrome.',
                                   'குரல் சாளரம் மூடியுள்ளது. திறக்க பேசு அழுத்துங்கள்.',
                                 ))
+                        : s.listening && s.holdToSpeak
+                        ? t(
+                            'Listening. Let go of the mic when you finish.',
+                            'கேட்கிறது. சொல்லி முடித்ததும் மைக்கை விடுங்கள்.',
+                          )
                         : s.listening
                         ? t(
                             'Listening. Speak naturally; items appear as you finish each one.',
                             'கேட்கிறது. சாதாரணமாக பேசுங்கள்; ஒவ்வொரு பொருளும் சொன்னதும் சேரும்.',
+                          )
+                        : s.holdToSpeak
+                        ? t(
+                            isPhone
+                                ? 'Voice ready. Hold the mic while you speak.'
+                                : 'Voice ready. Hold F2 or the Speak button while you speak.',
+                            'குரல் தயார். பேசும் வரை மைக்கை அழுத்திப் பிடியுங்கள்.',
                           )
                         : isPhone
                         ? t(

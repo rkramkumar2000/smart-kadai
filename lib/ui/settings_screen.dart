@@ -296,6 +296,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     () => s.repo.setSetting('voice_reply', v ? '1' : '0'),
                   ),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    t('Hold the mic to speak', 'மைக்கை பிடித்து பேசு'),
+                  ),
+                  subtitle: Text(
+                    t(
+                      'Good for a noisy shop. The mic listens only while you '
+                          'hold it down (or hold F2 on the computer). Off: tap '
+                          'once to start and again to stop.',
+                      'சத்தமான கடைக்கு நல்லது. மைக்கை அழுத்திப் பிடித்திருக்கும் '
+                          'வரை மட்டும் கேட்கும் (கணினியில் F2 பிடியுங்கள்).',
+                    ),
+                  ),
+                  value: s.holdToSpeak,
+                  onChanged: (v) => setState(() => s.holdToSpeak = v),
+                ),
                 Text(
                   t(
                     'Say "பில் போடு" or "cash" to save, "UPI" or "கடன்" for '

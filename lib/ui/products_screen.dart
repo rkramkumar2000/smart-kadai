@@ -5,6 +5,7 @@ import '../catalogue/product.dart';
 import '../core/units.dart';
 import '../voice/product_voice.dart';
 import 'product_form.dart';
+import 'hold_mic.dart';
 import 'product_import_dialog.dart';
 import 'theme.dart';
 
@@ -280,17 +281,30 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     width: 64,
                     child: Tooltip(
                       message: t('Find by voice', 'குரலில் தேடு'),
-                      child: FilledButton(
-                        onPressed: _voice,
-                        style: FilledButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          backgroundColor: _voiceOn
-                              ? KadaiColors.danger
-                              : KadaiColors.green,
-                        ),
-                        child: Icon(
-                          _voiceOn ? Icons.stop : Icons.mic,
-                          size: 28,
+                      child: HoldMic(
+                        state: s,
+                        // Hold to speak: what is said while held finds the
+                        // product. The finding stops once it is heard.
+                        onHoldStart: () {
+                          s.voiceCapture = _onHeard;
+                          setState(() {
+                            _voiceOn = true;
+                            _spoken = null;
+                            _found = const [];
+                          });
+                        },
+                        child: FilledButton(
+                          onPressed: s.holdToSpeak ? () {} : _voice,
+                          style: FilledButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            backgroundColor: _voiceOn
+                                ? KadaiColors.danger
+                                : KadaiColors.green,
+                          ),
+                          child: Icon(
+                            _voiceOn && !s.holdToSpeak ? Icons.stop : Icons.mic,
+                            size: 28,
+                          ),
                         ),
                       ),
                     ),

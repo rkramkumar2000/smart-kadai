@@ -48,6 +48,13 @@ class AppState extends ChangeNotifier {
   /// Whether the app answers aloud ("2 கடலை மிட்டாய்", "மொத்தம் 150 ரூபாய்").
   bool get voiceReplies => repo.setting('voice_reply', '1') == '1';
 
+  /// Settings: the mic listens only while it is held down.
+  bool get holdToSpeak => repo.setting('hold_to_speak', '0') == '1';
+  set holdToSpeak(bool v) {
+    repo.setSetting('hold_to_speak', v ? '1' : '0');
+    notifyListeners();
+  }
+
   /// Bills put on hold while another customer is served.
   final List<Bill> held = [];
 
@@ -193,6 +200,27 @@ class AppState extends ChangeNotifier {
       if (!speech.isAvailable) return;
     }
     listening ? await speech.stop() : await speech.start();
+  }
+
+  bool _holding = false;
+
+  /// Hold to speak: the mic was pressed down.
+  Future<void> holdStart() async {
+    _holding = true;
+    if (!speech.isAvailable) {
+      await speech.open();
+      if (!speech.isAvailable) return;
+    }
+    if (!listening) await speech.start();
+    // Let go while the mic was still starting.
+    if (!_holding) await speech.stop();
+  }
+
+  /// Hold to speak: the mic was let go. What was said so far is used.
+  Future<void> holdEnd() async {
+    _holding = false;
+    // Always stop: on a PC "listening" can show a moment late.
+    if (speech.isAvailable) await speech.stop();
   }
 
   /// While set, finished phrases go here instead of onto the bill. The
