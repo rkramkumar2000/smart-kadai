@@ -145,10 +145,17 @@ LEFT JOIN devices d ON d.id = s.device_id WHERE s.id = ?''',
   Future<void> sendLastBill() async {
     final l = link, b = lastBill, id = b?.saleId;
     if (l == null || b == null || id == null) return;
-    final until = DateTime.now().add(const Duration(seconds: 4));
+    // Known to be away: don't keep the customer waiting; the bill goes
+    // in the background when the PC is back.
+    if (!l.online && l.lastError != null) {
+      unawaited(l.syncNow());
+      return;
+    }
+    final until = DateTime.now().add(const Duration(seconds: 3));
     while (l.store.pcBillNo(id) == null && DateTime.now().isBefore(until)) {
-      await l.syncNow();
-      if (!l.online) break;
+      final left = until.difference(DateTime.now());
+      final ok = await l.syncNow().timeout(left, onTimeout: () => false);
+      if (!ok && !l.online) break;
       if (l.store.pcBillNo(id) == null) {
         await Future<void>.delayed(const Duration(milliseconds: 200));
       }

@@ -232,8 +232,10 @@ class PhoneLink extends ChangeNotifier {
           timeout: const Duration(seconds: 3),
         );
         online = true;
-      } on Object {
+        lastError = null;
+      } on Object catch (e) {
         online = false;
+        lastError = '$e';
       }
     }
     return sentAny;
@@ -253,8 +255,9 @@ class PhoneLink extends ChangeNotifier {
     } on _Status catch (e) {
       if (e.status == 401) removed = true;
       rethrow;
-    } on Object {
+    } on Object catch (e) {
       online = false;
+      lastError = '$e';
       rethrow;
     }
   }

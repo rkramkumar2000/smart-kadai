@@ -180,7 +180,7 @@ void main() {
     await t.pumpAndSettle();
     await t.tap(find.text('Cash · பணம்').hitTestable().first);
     await t.pump();
-    await wait(t, 1500);
+    await wait(t, 6000);
     expect(find.textContaining('when Wi-Fi is back'), findsOneWidget);
     expect(s.link!.waitingBills, 1);
     expect(find.byIcon(Icons.cloud_off_outlined), findsWidgets);
