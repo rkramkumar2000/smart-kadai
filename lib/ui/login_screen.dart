@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app_state.dart';
 import '../auth/auth.dart';
+import 'phones_section.dart';
 import 'theme.dart';
 
 /// First run: create the owner's login. After that: pick your name and type
@@ -171,6 +172,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      // A staff phone joins the shop PC first, so this
+                      // comes before setting up an owner.
+                      if (widget.state.canJoinPc) ...[
+                        Text(
+                          t(
+                            'Staff phone? Connect it to the shop PC and log in with your own PIN.',
+                            'பணியாளர் போனா? கடை கணினியுடன் இணைத்து உங்கள் PIN-ல் நுழையுங்கள்.',
+                          ),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: KadaiColors.quiet),
+                        ),
+                        const SizedBox(height: 8),
+                        ConnectToPcButtons(state: widget.state),
+                        const Divider(height: 28),
+                      ],
                       if (_setup) ...[
                         Text(
                           t(
@@ -284,6 +300,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
+                      if (widget.state.isLinkedPhone) ...[
+                        const SizedBox(height: 16),
+                        ListenableBuilder(
+                          listenable: widget.state,
+                          builder: (_, _) => PcStatus(state: widget.state),
+                        ),
+                      ],
                     ],
                   ),
                 ),

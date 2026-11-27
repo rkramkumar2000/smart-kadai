@@ -32,6 +32,17 @@ class ItemSales {
   final String unit;
 }
 
+/// Bills made by one staff member on one counter (the PC or a phone).
+class StaffSales {
+  StaffSales(this.name, this.where, this.bills, this.amount);
+  final String name;
+
+  /// "This PC" or the phone's name.
+  final String where;
+  final int bills;
+  final double amount;
+}
+
 class DaySales {
   DaySales(this.day, this.amount);
   final DateTime day;
@@ -190,6 +201,26 @@ GROUP BY i.product_id ORDER BY amt DESC LIMIT 10''',
       customerDue: (owed as num).toDouble(),
     );
   }
+
+  /// Sales by who billed and on which counter, biggest first.
+  List<StaffSales> byStaff(DateTime from, DateTime to) => [
+    for (final r in _db.select(
+      '''
+SELECT COALESCE(u.name, '-') AS name, COALESCE(d.name, 'This PC') AS dev,
+  COUNT(*) AS n, COALESCE(SUM(s.total),0) AS t
+FROM sales s LEFT JOIN users u ON u.id = s.user_id
+LEFT JOIN devices d ON d.id = s.device_id
+WHERE s.created_at >= ? AND s.created_at < ?
+GROUP BY s.user_id, s.device_id ORDER BY t DESC''',
+      [from.toIso8601String(), to.toIso8601String()],
+    ))
+      StaffSales(
+        r['name'] as String,
+        r['dev'] as String,
+        r['n'] as int,
+        (r['t'] as num).toDouble(),
+      ),
+  ];
 
   /// Every sale line in the period as CSV, which opens in Excel.
   String salesCsv(DateTime from, DateTime to) {

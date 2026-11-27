@@ -158,7 +158,8 @@ class _PurchasesScreenState extends State<PurchasesScreen> {
       ),
     );
     final v = double.tryParse(amt.text.trim());
-    amt.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     if (ok != true || v == null || v <= 0) return;
     buy.paySupplier(sup.id, v, mode);
     setState(() {});
@@ -444,9 +445,8 @@ Future<Supplier?> showSupplierDialog(
       ),
     );
   }
-  for (final c in [n, ph, g, a]) {
-    c.dispose();
-  }
+  // The dialog still uses its text boxes while it closes; Dart cleans
+  // them up.
   return saved;
 }
 
@@ -610,6 +610,264 @@ class _PurchaseFormPageState extends State<PurchaseFormPage> {
     final products = s.activeProducts;
     final draft = widget.draft;
     final diff = draft == null ? 0.0 : (draft.total - _total);
+    // A phone stacks the boxes; the PC shows one line per item.
+    final narrow = isNarrow(context);
+
+    final supplierField = DropdownButtonFormField<String>(
+      isExpanded: true,
+      initialValue: _supplier?.id,
+      decoration: const InputDecoration(labelText: 'Supplier'),
+      items: [
+        for (final x in suppliers)
+          DropdownMenuItem(value: x.id, child: Text(x.name)),
+      ],
+      onChanged: (id) =>
+          setState(() => _supplier = suppliers.firstWhere((x) => x.id == id)),
+    );
+    final newSupplier = TextButton.icon(
+      onPressed: _pickSupplier,
+      icon: const Icon(Icons.add),
+      label: Text(
+        draft != null && _supplier == null && draft.supplierName.isNotEmpty
+            ? 'Add "${draft.supplierName}"'
+            : narrow
+            ? 'New'
+            : 'New supplier',
+      ),
+    );
+    final billNo = TextField(
+      controller: _invoiceNo,
+      decoration: const InputDecoration(labelText: 'Bill no'),
+    );
+    final date = OutlinedButton.icon(
+      onPressed: () async {
+        final d = await showDatePicker(
+          context: context,
+          initialDate: _date,
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now().add(const Duration(days: 1)),
+        );
+        if (d != null) setState(() => _date = d);
+      },
+      icon: const Icon(Icons.event),
+      label: Text(_day(_date)),
+    );
+    final header = narrow
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: supplierField),
+                  newSupplier,
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: billNo),
+                  const SizedBox(width: 8),
+                  date,
+                ],
+              ),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(flex: 3, child: supplierField),
+              const SizedBox(width: 8),
+              newSupplier,
+              const SizedBox(width: 12),
+              Expanded(flex: 2, child: billNo),
+              const SizedBox(width: 12),
+              date,
+            ],
+          );
+
+    Widget line(int i) {
+      final l = _lines[i];
+      final missing = l.product == null;
+      final product = DropdownButtonFormField<String>(
+        isExpanded: true,
+        initialValue: l.product?.id,
+        hint: const Text('Pick product'),
+        items: [
+          for (final p in products)
+            DropdownMenuItem(
+              value: p.id,
+              child: Text(
+                '${p.nameEn} · ${p.nameTa}',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+        onChanged: (id) => setState(() {
+          l.product = products.firstWhere((p) => p.id == id);
+          l.variant = l.product!.defaultVariant;
+        }),
+      );
+      final size = DropdownButtonFormField<String>(
+        key: ValueKey('v${l.product?.id}'),
+        isExpanded: true,
+        initialValue: l.variant?.id ?? '',
+        decoration: narrow ? const InputDecoration(labelText: 'Size') : null,
+        items: [
+          if (l.product != null)
+            DropdownMenuItem(
+              value: '',
+              child: Text('1 ${l.product!.stockUnit.code} loose'),
+            ),
+          for (final v in l.product?.variants ?? const <ProductVariant>[])
+            DropdownMenuItem(value: v.id, child: Text(v.label)),
+        ],
+        onChanged: (id) => setState(
+          () => l.variant = id == ''
+              ? null
+              : l.product!.variants.firstWhere((v) => v.id == id),
+        ),
+      );
+      final amount = Text(
+        rupees(l.total),
+        textAlign: narrow ? TextAlign.right : TextAlign.start,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      );
+      final remove = IconButton(
+        tooltip: 'Remove line',
+        onPressed: () => setState(() {
+          final gone = _lines.removeAt(i);
+          // Its text boxes are on screen until the next frame.
+          WidgetsBinding.instance.addPostFrameCallback((_) => gone.dispose());
+        }),
+        icon: const Icon(Icons.close),
+      );
+      return Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: missing && l.readName.isNotEmpty ? KadaiColors.warnTint : null,
+          border: narrow ? Border.all(color: KadaiColors.line) : null,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (l.readName.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'On the bill: ${l.readName}',
+                  style: const TextStyle(color: KadaiColors.quiet),
+                ),
+              ),
+            if (narrow) ...[
+              Row(
+                children: [
+                  Expanded(child: product),
+                  remove,
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(flex: 3, child: size),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: _num(l.count, 'Quantity')),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(flex: 2, child: _num(l.cost, 'Cost each ₹')),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 1, child: _num(l.gst, 'GST %')),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: amount),
+                ],
+              ),
+            ] else
+              Row(
+                children: [
+                  Expanded(flex: 5, child: product),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 3, child: size),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: _num(l.count)),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: _num(l.cost)),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 1, child: _num(l.gst)),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: amount),
+                  remove,
+                ],
+              ),
+          ],
+        ),
+      );
+    }
+
+    final addLine = OutlinedButton.icon(
+      onPressed: () => setState(() => _lines.add(_LineEdit())),
+      icon: const Icon(Icons.add),
+      label: const Text('Add line'),
+    );
+    final mismatch = draft != null && diff.abs() >= 1
+        ? Text(
+            'Bill total says ${rupees(draft.total)}. '
+            'Lines add up to ${rupees(_total)}.',
+            style: const TextStyle(
+              color: KadaiColors.danger,
+              fontWeight: FontWeight.w600,
+            ),
+          )
+        : null;
+    final total = Text(
+      'Total ${rupees(_total)}',
+      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+    );
+    final paid = TextField(
+      controller: _paid,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(labelText: 'Paid now ₹'),
+    );
+    final save = FilledButton.icon(
+      onPressed: _save,
+      icon: const Icon(Icons.check),
+      label: const Text('Save purchase'),
+    );
+    final footer = narrow
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [addLine, total],
+              ),
+              if (mismatch != null) ...[const SizedBox(height: 6), mismatch],
+              const SizedBox(height: 8),
+              paid,
+              const SizedBox(height: 8),
+              save,
+            ],
+          )
+        : Row(
+            children: [
+              addLine,
+              const SizedBox(width: 16),
+              if (mismatch != null)
+                Expanded(child: mismatch)
+              else
+                const Spacer(),
+              total,
+              const SizedBox(width: 16),
+              SizedBox(width: 150, child: paid),
+              const SizedBox(width: 16),
+              save,
+            ],
+          );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -617,7 +875,7 @@ class _PurchaseFormPageState extends State<PurchaseFormPage> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(narrow ? 12 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -635,249 +893,42 @@ class _PurchaseFormPageState extends State<PurchaseFormPage> {
                   style: TextStyle(color: KadaiColors.warnInk, fontSize: 15),
                 ),
               ),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    initialValue: _supplier?.id,
-                    decoration: const InputDecoration(labelText: 'Supplier'),
-                    items: [
-                      for (final x in suppliers)
-                        DropdownMenuItem(value: x.id, child: Text(x.name)),
-                    ],
-                    onChanged: (id) => setState(
-                      () => _supplier = suppliers.firstWhere((x) => x.id == id),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _pickSupplier,
-                  icon: const Icon(Icons.add),
-                  label: Text(
-                    draft != null &&
-                            _supplier == null &&
-                            draft.supplierName.isNotEmpty
-                        ? 'Add "${draft.supplierName}"'
-                        : 'New supplier',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _invoiceNo,
-                    decoration: const InputDecoration(labelText: 'Bill no'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: _date,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now().add(const Duration(days: 1)),
-                    );
-                    if (d != null) setState(() => _date = d);
-                  },
-                  icon: const Icon(Icons.event),
-                  label: Text(_day(_date)),
-                ),
-              ],
-            ),
+            header,
             const SizedBox(height: 14),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  Expanded(flex: 5, child: Text('Product')),
-                  SizedBox(width: 8),
-                  Expanded(flex: 3, child: Text('Size')),
-                  SizedBox(width: 8),
-                  Expanded(flex: 2, child: Text('Quantity')),
-                  SizedBox(width: 8),
-                  Expanded(flex: 2, child: Text('Cost each ₹')),
-                  SizedBox(width: 8),
-                  Expanded(flex: 1, child: Text('GST %')),
-                  SizedBox(width: 8),
-                  Expanded(flex: 2, child: Text('Amount')),
-                  SizedBox(width: 48),
-                ],
+            if (!narrow) ...[
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  children: [
+                    Expanded(flex: 5, child: Text('Product')),
+                    SizedBox(width: 8),
+                    Expanded(flex: 3, child: Text('Size')),
+                    SizedBox(width: 8),
+                    Expanded(flex: 2, child: Text('Quantity')),
+                    SizedBox(width: 8),
+                    Expanded(flex: 2, child: Text('Cost each ₹')),
+                    SizedBox(width: 8),
+                    Expanded(flex: 1, child: Text('GST %')),
+                    SizedBox(width: 8),
+                    Expanded(flex: 2, child: Text('Amount')),
+                    SizedBox(width: 48),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
+              const SizedBox(height: 6),
+            ],
             Expanded(
               child: Card(
                 child: ListView.separated(
                   padding: const EdgeInsets.all(8),
                   itemCount: _lines.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final l = _lines[i];
-                    final missing = l.product == null;
-                    return Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: missing && l.readName.isNotEmpty
-                            ? KadaiColors.warnTint
-                            : null,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (l.readName.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                'On the bill: ${l.readName}',
-                                style: const TextStyle(
-                                  color: KadaiColors.quiet,
-                                ),
-                              ),
-                            ),
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 5,
-                                child: DropdownButtonFormField<String>(
-                                  isExpanded: true,
-                                  initialValue: l.product?.id,
-                                  hint: const Text('Pick product'),
-                                  items: [
-                                    for (final p in products)
-                                      DropdownMenuItem(
-                                        value: p.id,
-                                        child: Text(
-                                          '${p.nameEn} · ${p.nameTa}',
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                  ],
-                                  onChanged: (id) => setState(() {
-                                    l.product = products.firstWhere(
-                                      (p) => p.id == id,
-                                    );
-                                    l.variant = l.product!.defaultVariant;
-                                  }),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                flex: 3,
-                                child: DropdownButtonFormField<String>(
-                                  key: ValueKey('v${l.product?.id}'),
-                                  isExpanded: true,
-                                  initialValue: l.variant?.id ?? '',
-                                  items: [
-                                    if (l.product != null)
-                                      DropdownMenuItem(
-                                        value: '',
-                                        child: Text(
-                                          '1 ${l.product!.stockUnit.code} loose',
-                                        ),
-                                      ),
-                                    for (final v
-                                        in l.product?.variants ??
-                                            const <ProductVariant>[])
-                                      DropdownMenuItem(
-                                        value: v.id,
-                                        child: Text(v.label),
-                                      ),
-                                  ],
-                                  onChanged: (id) => setState(
-                                    () => l.variant = id == ''
-                                        ? null
-                                        : l.product!.variants.firstWhere(
-                                            (v) => v.id == id,
-                                          ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(flex: 2, child: _num(l.count)),
-                              const SizedBox(width: 8),
-                              Expanded(flex: 2, child: _num(l.cost)),
-                              const SizedBox(width: 8),
-                              Expanded(flex: 1, child: _num(l.gst)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                flex: 2,
-                                child: Text(
-                                  rupees(l.total),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Remove line',
-                                onPressed: () => setState(() {
-                                  _lines.removeAt(i).dispose();
-                                }),
-                                icon: const Icon(Icons.close),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  itemBuilder: (context, i) => line(i),
                 ),
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => setState(() => _lines.add(_LineEdit())),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add line'),
-                ),
-                const SizedBox(width: 16),
-                if (draft != null && diff.abs() >= 1)
-                  Expanded(
-                    child: Text(
-                      'Bill total says ${rupees(draft.total)}. '
-                      'Lines add up to ${rupees(_total)}.',
-                      style: const TextStyle(
-                        color: KadaiColors.danger,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                else
-                  const Spacer(),
-                Text(
-                  'Total ${rupees(_total)}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 150,
-                  child: TextField(
-                    controller: _paid,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(labelText: 'Paid now ₹'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                FilledButton.icon(
-                  onPressed: _save,
-                  icon: const Icon(Icons.check),
-                  label: const Text('Save purchase'),
-                ),
-              ],
-            ),
+            footer,
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -895,8 +946,9 @@ class _PurchaseFormPageState extends State<PurchaseFormPage> {
     );
   }
 
-  Widget _num(TextEditingController c) => TextField(
+  Widget _num(TextEditingController c, [String? label]) => TextField(
     controller: c,
+    decoration: label == null ? null : InputDecoration(labelText: label),
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     onChanged: (_) => setState(() {}),
   );

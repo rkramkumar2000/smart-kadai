@@ -172,6 +172,7 @@ class Product {
   }
 
   Product copyWith({
+    String? id,
     String? code,
     String? nameEn,
     String? nameTa,
@@ -190,7 +191,7 @@ class Product {
     DateTime? updatedAt,
     List<ProductVariant>? variants,
   }) => Product(
-    id: id,
+    id: id ?? this.id,
     code: code ?? this.code,
     nameEn: nameEn ?? this.nameEn,
     nameTa: nameTa ?? this.nameTa,

@@ -80,7 +80,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
       ),
     );
     final v = double.tryParse(amt.text.trim());
-    amt.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     if (ok != true || v == null || v <= 0) return;
     repo.receivePayment(c.id, v, mode, userId: s.user?.id);
     setState(() => _open = repo.byId(c.id));
@@ -419,9 +420,8 @@ Future<Customer?> showCustomerDialog(
       ),
     );
   }
-  for (final x in [n, ph, a]) {
-    x.dispose();
-  }
+  // The dialog still uses its text boxes while it closes; Dart cleans
+  // them up.
   return saved;
 }
 

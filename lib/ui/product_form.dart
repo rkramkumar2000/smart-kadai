@@ -638,7 +638,7 @@ class _ProductFormState extends State<ProductForm> {
             onPressed: _variants.length == 1
                 ? null
                 : () => setState(() {
-                    _variants.removeAt(i).dispose();
+                    _disposeLater(_variants.removeAt(i));
                     if (!_variants.any((d) => d.isDefault)) {
                       _variants.first.isDefault = true;
                     }
@@ -650,6 +650,10 @@ class _ProductFormState extends State<ProductForm> {
     );
   }
 
+  /// A removed size's text boxes are still on screen until the next frame.
+  static void _disposeLater(_VariantDraft d) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => d.dispose());
+
   void _makeUsual(_VariantDraft v) => setState(() {
     for (final d in _variants) {
       d.isDefault = d == v;
@@ -657,7 +661,7 @@ class _ProductFormState extends State<ProductForm> {
   });
 
   void _removeVariant(int i) => setState(() {
-    _variants.removeAt(i).dispose();
+    _disposeLater(_variants.removeAt(i));
     if (!_variants.any((d) => d.isDefault)) {
       _variants.first.isDefault = true;
     }

@@ -105,7 +105,13 @@ class _BillingScreenState extends State<BillingScreen> {
     }
     final no = s.completeBill(mode);
     if (no == null || !mounted) return;
+    // A phone sends the bill to the shop PC and takes its bill number.
+    if (s.isLinkedPhone) {
+      await s.sendLastBill();
+      if (!mounted) return;
+    }
     final saved = s.lastBill!;
+    final waits = saved.tag != null;
     if (s.repo.setting('auto_print') == '1') printBill(s, saved);
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
@@ -119,11 +125,12 @@ class _BillingScreenState extends State<BillingScreen> {
               width: isNarrow(context) ? double.infinity : 520,
               child: Text(
                 t(
-                  'Bill $no saved (${mode.label}'
+                  'Bill ${saved.label} saved (${mode.label}'
                       '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}). '
-                      'Stock updated.',
-                  'பில் $no சேமிக்கப்பட்டது (${modeTa(mode)}'
-                      '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}).',
+                      '${waits ? 'It goes to the shop PC when Wi-Fi is back.' : 'Stock updated.'}',
+                  'பில் ${saved.label} சேமிக்கப்பட்டது (${modeTa(mode)}'
+                      '${saved.bill.customerName.isEmpty ? '' : ', ${saved.bill.customerName}'}).'
+                      '${waits ? ' Wi-Fi வந்ததும் கணினிக்கு போகும்.' : ''}',
                 ),
                 style: const TextStyle(fontSize: 16),
               ),
@@ -198,7 +205,8 @@ class _BillingScreenState extends State<BillingScreen> {
         ],
       ),
     );
-    c.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     if (v != null) s.setDiscount(v);
     _refocus();
   }
@@ -544,48 +552,71 @@ class _BillingScreenState extends State<BillingScreen> {
             ),
           ],
         ),
-        if (s.heard.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
+        // What was heard and the "which one?" questions scroll, so they
+        // never push the bill off a small phone screen.
+        if (s.heard.isNotEmpty || s.pending.isNotEmpty)
+          Flexible(
+            flex: 3,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.graphic_eq, color: KadaiColors.green),
-                  const SizedBox(width: 10),
-                  Text(
-                    t('Heard: ', 'கேட்டது: '),
-                    style: const TextStyle(
-                      color: KadaiColors.quiet,
-                      fontSize: 16,
+                  if (s.heard.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.graphic_eq,
+                              color: KadaiColors.green,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              t('Heard: ', 'கேட்டது: '),
+                              style: const TextStyle(
+                                color: KadaiColors.quiet,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                '"${s.heard}"',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '"${s.heard}"',
-                      style: const TextStyle(fontSize: 16),
+                  ],
+                  for (final m in s.pending) ...[
+                    const SizedBox(height: 12),
+                    _ConfirmCard(
+                      match: m,
+                      products: s.activeProducts,
+                      onPick: (p) {
+                        s.confirm(m, p);
+                        _refocus();
+                      },
+                      onSkip: () => s.dismiss(m),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
           ),
+        if (phone && !typing && s.pending.isEmpty) ...[
+          const SizedBox(height: 8),
+          _quickStrip(),
         ],
-        for (final m in s.pending) ...[
-          const SizedBox(height: 12),
-          _ConfirmCard(
-            match: m,
-            products: s.activeProducts,
-            onPick: (p) {
-              s.confirm(m, p);
-              _refocus();
-            },
-            onSkip: () => s.dismiss(m),
-          ),
-        ],
-        if (phone && !typing) ...[const SizedBox(height: 8), _quickStrip()],
         SizedBox(height: phone ? 8 : 12),
         Expanded(
+          flex: 2,
           child: Card(child: _lines(phone: phone)),
         ),
         if (!typing) ...[

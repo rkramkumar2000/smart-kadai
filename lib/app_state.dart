@@ -11,6 +11,10 @@ import 'customers/customers.dart';
 import 'data/shop_repository.dart';
 import 'purchases/purchases.dart';
 import 'reports/reports.dart';
+import 'sync/phone_link.dart';
+import 'sync/shop_host.dart';
+import 'sync/shop_server.dart';
+import 'sync/sync_store.dart';
 import 'voice/phonetic.dart';
 import 'voice/product_matcher.dart';
 import 'voice/speech_service.dart';
@@ -20,7 +24,7 @@ import 'voice/voice_commands.dart';
 /// Everything the screens share: the catalogue, the bill being made and the
 /// voice matches waiting for the owner to confirm.
 class AppState extends ChangeNotifier {
-  AppState(this.repo, {SpeechService? speech})
+  AppState(this.repo, {SpeechService? speech, this.link})
     : speech = speech ?? NoSpeechService(),
       auth = AuthRepository(repo.dbHandle),
       purchases = PurchaseRepository(repo),
@@ -30,6 +34,130 @@ class AppState extends ChangeNotifier {
     _reload();
     _sub = this.speech.results.listen(_onSpeech);
     _changeSub = this.speech.changes.listen((_) => notifyListeners());
+    final l = link;
+    if (l != null) {
+      l.onPulled = refresh;
+      l.addListener(notifyListeners);
+    }
+  }
+
+  // ------------------------------------------------------- shop PC + phones
+
+  /// Set on a staff phone that bills through the shop PC.
+  final PhoneLink? link;
+
+  /// Switches this phone between its own shop and the shop PC's.
+  ShopHost? host;
+
+  /// A phone billing through the shop PC.
+  bool get isLinkedPhone => link != null;
+
+  /// A phone that could start billing through a shop PC.
+  bool get canJoinPc => !isLinkedPhone && (host?.isPhone ?? false);
+
+  /// Set on the shop PC: phones send their bills to it.
+  ShopServer? server;
+
+  late final SyncStore sync = link?.store ?? SyncStore(repo);
+
+  /// Settings: phones on the shop Wi-Fi can bill through this PC.
+  bool get phonesOn => repo.setting('phones_on') == '1';
+
+  /// Turns the phone server on or off. Returns an error to show, or null.
+  Future<String?> setPhonesOn(bool on) async {
+    repo.setSetting('phones_on', on ? '1' : '0');
+    String? err;
+    try {
+      server ??= ShopServer(
+        sync,
+        onChange: refresh,
+        onPhoneBill: (id) => phoneBillArrived?.call(id),
+      );
+      on ? await server!.start() : await server!.stop();
+    } on Object catch (e) {
+      err = '$e';
+      repo.setSetting('phones_on', '0');
+    }
+    notifyListeners();
+    return err;
+  }
+
+  /// The PC screen prints phone bills when the owner asked for it.
+  void Function(String saleId)? phoneBillArrived;
+
+  /// A saved bill read back from the database, for printing on the PC.
+  SavedBill? savedBill(String saleId) {
+    final r = repo.db.select(
+      '''
+SELECT s.*, u.name AS cashier, c.name AS cname, c.phone AS cphone, d.name AS phone
+FROM sales s LEFT JOIN users u ON u.id = s.user_id
+LEFT JOIN customers c ON c.id = s.customer_id
+LEFT JOIN devices d ON d.id = s.device_id WHERE s.id = ?''',
+      [saleId],
+    );
+    if (r.isEmpty) return null;
+    final s = r.first;
+    final byId = {for (final p in products) p.id: p};
+    final b = Bill()
+      ..wholesale = (s['wholesale'] as int) == 1
+      ..discount = (s['discount'] as num).toDouble()
+      ..customerId = s['customer_id'] as String?
+      ..customerName = s['cname'] as String? ?? ''
+      ..customerPhone = s['cphone'] as String? ?? '';
+    for (final i in repo.db.select(
+      'SELECT * FROM sale_items WHERE sale_id = ? ORDER BY rowid',
+      [saleId],
+    )) {
+      final p = byId[i['product_id']];
+      if (p == null) continue;
+      final vid = i['variant_id'] as String?;
+      final v = vid == null
+          ? null
+          : p.variants.where((v) => v.id == vid).firstOrNull;
+      final line = BillLine(
+        product: p,
+        variant: v,
+        count: (i['count'] as num).toDouble(),
+        enteredBy: EntryMethod.values.firstWhere(
+          (e) => e.name == i['entered_by'],
+          orElse: () => EntryMethod.tap,
+        ),
+        wholesale: b.wholesale,
+      );
+      final price = (i['unit_price'] as num).toDouble();
+      b.lines.add(line.listPrice == price ? line : line.withPrice(price));
+    }
+    return SavedBill(
+      number: s['bill_no'] as int,
+      bill: b,
+      mode: PaymentMode.values.firstWhere(
+        (m) => m.code == s['payment_mode'],
+        orElse: () => PaymentMode.cash,
+      ),
+      at: DateTime.parse(s['created_at'] as String),
+      cashier: [s['cashier'], s['phone']].whereType<String>().join(' · '),
+      saleId: saleId,
+    );
+  }
+
+  /// On a linked phone: sends the bill just saved and waits a few seconds
+  /// for the PC's bill number, so the printed bill matches the PC.
+  Future<void> sendLastBill() async {
+    final l = link, b = lastBill, id = b?.saleId;
+    if (l == null || b == null || id == null) return;
+    final until = DateTime.now().add(const Duration(seconds: 4));
+    while (l.store.pcBillNo(id) == null && DateTime.now().isBefore(until)) {
+      await l.syncNow();
+      if (!l.online) break;
+      if (l.store.pcBillNo(id) == null) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+    final no = l.store.pcBillNo(id);
+    if (no != null && identical(lastBill, b)) {
+      lastBill = b.copyWith(number: no, tag: null);
+      notifyListeners();
+    }
   }
 
   final ShopRepository repo;
@@ -588,6 +716,9 @@ class AppState extends ChangeNotifier {
       mode: mode,
       at: DateTime.now(),
       cashier: user?.name ?? '',
+      saleId: repo.lastSaleId,
+      // On a phone, until the PC gives the bill its number.
+      tag: link == null ? null : 'M',
     );
     bill = Bill();
     pending.clear();
@@ -599,6 +730,9 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    link?.removeListener(notifyListeners);
+    link?.dispose();
+    server?.stop();
     _commands.close();
     _sub.cancel();
     _changeSub.cancel();
@@ -613,10 +747,30 @@ class SavedBill {
     required this.mode,
     required this.at,
     required this.cashier,
+    this.saleId,
+    this.tag,
   });
   final int number;
   final Bill bill;
   final PaymentMode mode;
   final DateTime at;
   final String cashier;
+  final String? saleId;
+
+  /// "M" for a phone bill not yet numbered by the shop PC.
+  final String? tag;
+
+  /// The bill number as printed: "52", or "M-3" for a phone bill that has
+  /// not reached the PC yet.
+  String get label => tag == null ? '$number' : '$tag-$number';
+
+  SavedBill copyWith({int? number, String? tag}) => SavedBill(
+    number: number ?? this.number,
+    bill: bill,
+    mode: mode,
+    at: at,
+    cashier: cashier,
+    saleId: saleId,
+    tag: tag,
+  );
 }

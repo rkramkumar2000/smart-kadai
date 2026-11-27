@@ -231,9 +231,12 @@ class _ProductsScreenState extends State<ProductsScreen> {
                       child: TwoLang('Products', 'பொருட்கள்', size: 24),
                     ),
                     const SizedBox(width: 16),
-                    Text(
-                      '${s.activeProducts.length} selling',
-                      style: const TextStyle(color: KadaiColors.quiet),
+                    Flexible(
+                      child: Text(
+                        '${s.activeProducts.length} selling',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: KadaiColors.quiet),
+                      ),
                     ),
                   ],
                 ),

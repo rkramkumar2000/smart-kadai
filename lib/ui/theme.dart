@@ -166,12 +166,23 @@ class ScreenHeader extends StatelessWidget {
           ],
         );
       }
+      // With big text the buttons wrap onto a second line instead of
+      // running off the screen.
       return Row(
         children: [
           Expanded(child: title),
-          for (final (i, a) in actions.indexed) ...[
-            if (i > 0) const SizedBox(width: 12),
-            a,
+          if (actions.isNotEmpty) ...[
+            const SizedBox(width: 12),
+            Flexible(
+              flex: 2,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
+                children: actions,
+              ),
+            ),
           ],
         ],
       );

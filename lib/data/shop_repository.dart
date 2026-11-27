@@ -23,6 +23,14 @@ class ShopRepository {
 
   String newId() => _uuid.v4();
 
+  /// A phone linked to the shop PC listens here to send its bills,
+  /// products, customers and payments: kind is 'sale', 'product',
+  /// 'customer' or 'customer_payment'.
+  void Function(String kind, String id)? onLocalChange;
+
+  /// The id of the bill [saveSale] saved last.
+  String? lastSaleId;
+
   /// Loads the starter catalogue on first run.
   void seedIfEmpty() {
     final n =
@@ -154,6 +162,7 @@ ON CONFLICT(id) DO UPDATE SET unit=excluded.unit, quantity=excluded.quantity,
       }
       stmt.close();
     });
+    onLocalChange?.call('product', p.id);
   }
 
   /// Changes stock by [delta] and records why ("Spoiled", "Counted again").
@@ -308,7 +317,9 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?)''');
         moveStock(l.product.id, -l.stockDelta, 'SALE', saleId, userId: userId);
       }
       stmt.close();
+      lastSaleId = saleId;
     });
+    onLocalChange?.call('sale', lastSaleId!);
     return billNo;
   }
 

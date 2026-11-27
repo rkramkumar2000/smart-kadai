@@ -32,31 +32,37 @@ Future<bool> showUpiQr(
       title: const Text('Scan to pay · UPI'),
       content: SizedBox(
         width: 340,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              rupees(amount),
-              style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(8),
-              child: QrImageView(
-                data: upiLink(upiId, payee, amount, note),
-                size: 260,
+        // Scrolls on a small phone with big text.
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                rupees(amount),
+                style: const TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(upiId, style: const TextStyle(color: KadaiColors.quiet)),
-            const SizedBox(height: 4),
-            const Text(
-              'Check that the money reached your phone before you press Paid.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: KadaiColors.quiet),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(8),
+                child: QrImageView(
+                  data: upiLink(upiId, payee, amount, note),
+                  size: 260,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(upiId, style: const TextStyle(color: KadaiColors.quiet)),
+              const SizedBox(height: 4),
+              const Text(
+                'Check that the money reached your phone before you press Paid.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: KadaiColors.quiet),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [

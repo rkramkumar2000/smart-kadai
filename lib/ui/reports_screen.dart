@@ -97,8 +97,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
     final v = double.tryParse(amt.text.trim());
     final n = note.text;
-    amt.dispose();
-    note.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     if (ok != true || v == null || v <= 0) return;
     s.expenses.add(DateTime.now(), cat, v, note: n, userId: s.user?.id);
     setState(() {});
@@ -259,6 +259,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
               const SizedBox(height: 14),
               pair(_top(r), _expenses(from, to)),
               const SizedBox(height: 14),
+              _staff(from, to),
+              const SizedBox(height: 14),
               ScreenHeader(
                 title: Text(
                   'Voice entered ${(r.voiceShare * 100).round()}% of bill lines',
@@ -352,13 +354,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         if (!many)
-                          Text(
-                            rupees(d.amount),
-                            style: const TextStyle(fontSize: 12),
+                          // Narrow bars on a phone: the amount shrinks to
+                          // fit instead of wrapping.
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              rupees(d.amount),
+                              maxLines: 1,
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
                         const SizedBox(height: 4),
                         Container(
-                          height: max == 0 ? 2 : 2 + 130 * d.amount / max,
+                          height: max == 0 ? 2 : 2 + 120 * d.amount / max,
                           decoration: BoxDecoration(
                             color: KadaiColors.green,
                             borderRadius: const BorderRadius.vertical(
@@ -367,11 +375,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          many ? '${d.day.day}' : names[d.day.weekday - 1],
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: KadaiColors.quiet,
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            many ? '${d.day.day}' : names[d.day.weekday - 1],
+                            maxLines: 1,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: KadaiColors.quiet,
+                            ),
                           ),
                         ),
                       ],
@@ -419,6 +431,54 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Who billed how much, on the PC and on each staff phone.
+  Widget _staff(DateTime from, DateTime to) {
+    final rows = s.reports.byStaff(from, to);
+    return _card(
+      t('Sales by staff', 'பணியாளர் வாரியாக விற்பனை'),
+      rows.isEmpty
+          ? const Text('No sales', style: TextStyle(color: KadaiColors.quiet))
+          : Column(
+              children: [
+                for (final r in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Icon(
+                          r.where == 'This PC'
+                              ? Icons.computer
+                              : Icons.smartphone,
+                          size: 20,
+                          color: KadaiColors.quiet,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${r.name} · ${r.where == 'This PC' ? t('This PC', 'இந்த கணினி') : r.where}',
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                        ),
+                        Text(
+                          '${r.bills} ${t('bills', 'பில்')}',
+                          style: const TextStyle(color: KadaiColors.quiet),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          rupees(r.amount),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 

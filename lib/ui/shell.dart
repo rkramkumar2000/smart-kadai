@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../app_state.dart';
 import 'billing_screen.dart';
 import 'customers_screen.dart';
+import 'phones_section.dart';
 import 'products_screen.dart';
 import 'purchases_screen.dart';
 import 'reports_screen.dart';
@@ -34,9 +35,15 @@ class _AppShellState extends State<AppShell> {
     ('Settings', 'அமைப்பு', Icons.settings_outlined, true),
   ];
 
+  /// A phone billing through the PC leaves stock, purchases and reports
+  /// to the PC.
+  static const _pcOnly = {'Stock', 'Purchases', 'Reports'};
+
   List<(String, String, IconData, bool)> get _items => [
     for (final i in _all)
-      if (!i.$4 || (widget.state.user?.isOwner ?? false)) i,
+      if ((!i.$4 || (widget.state.user?.isOwner ?? false)) &&
+          !(widget.state.isLinkedPhone && _pcOnly.contains(i.$1)))
+        i,
   ];
 
   Widget _screen(String name) => switch (name) {
@@ -125,7 +132,11 @@ class _AppShellState extends State<AppShell> {
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: 12,
-                vertical: phone ? 14 : 10,
+                vertical: phone
+                    ? 14
+                    : _short
+                    ? 5
+                    : 10,
               ),
               child: Row(
                 children: [
@@ -153,32 +164,55 @@ class _AppShellState extends State<AppShell> {
       ),
   ];
 
+  /// A laptop screen (1366 × 768 less the taskbar): the menu is made
+  /// tighter so every item shows without scrolling.
+  bool get _short => MediaQuery.sizeOf(context).height < 860;
+
   Widget _today() => ListenableBuilder(
     listenable: widget.state,
-    builder: (context, _) => Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: KadaiColors.ground,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            bi('Today · இன்று'),
-            style: TextStyle(fontSize: 13, color: KadaiColors.quiet),
+    builder: (context, _) => _short
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: KadaiColors.ground,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${t('Today', 'இன்று')} ${rupees(widget.state.today.total)} · '
+              '${widget.state.today.bills} ${t('bills', 'பில்')}',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          )
+        : Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: KadaiColors.ground,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  bi('Today · இன்று'),
+                  style: TextStyle(fontSize: 13, color: KadaiColors.quiet),
+                ),
+                Text(
+                  rupees(widget.state.today.total),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '${widget.state.today.bills} ${t('bills', 'பில்')}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: KadaiColors.quiet,
+                  ),
+                ),
+              ],
+            ),
           ),
-          Text(
-            rupees(widget.state.today.total),
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-          ),
-          Text(
-            '${widget.state.today.bills} ${t('bills', 'பில்')}',
-            style: const TextStyle(fontSize: 13, color: KadaiColors.quiet),
-          ),
-        ],
-      ),
-    ),
   );
 
   Widget _user() => Row(
@@ -208,7 +242,7 @@ class _AppShellState extends State<AppShell> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _logo(),
-      const SizedBox(height: 20),
+      SizedBox(height: _short && !phone ? 10 : 20),
       Expanded(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -216,6 +250,13 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
       const SizedBox(height: 8),
+      if (widget.state.isLinkedPhone) ...[
+        ListenableBuilder(
+          listenable: widget.state,
+          builder: (_, _) => PcStatus(state: widget.state),
+        ),
+        const SizedBox(height: 8),
+      ],
       _today(),
       const SizedBox(height: 8),
       ViewControls(state: widget.state),
@@ -241,6 +282,33 @@ class _AppShellState extends State<AppShell> {
           titleSpacing: 0,
           title: TwoLang(items[tab].$1, items[tab].$2, size: 18),
           actions: [
+            if (widget.state.isLinkedPhone)
+              ListenableBuilder(
+                listenable: widget.state,
+                builder: (_, _) {
+                  final l = widget.state.link!;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Tooltip(
+                      message: l.online
+                          ? t('PC connected', 'கணினி இணைப்பில்')
+                          : t('PC not reachable', 'கணினி கிடைக்கவில்லை'),
+                      child: Badge(
+                        isLabelVisible: l.waitingBills > 0,
+                        label: Text('${l.waitingBills}'),
+                        child: Icon(
+                          l.online
+                              ? Icons.cloud_done_outlined
+                              : Icons.cloud_off_outlined,
+                          color: l.online
+                              ? KadaiColors.green
+                              : KadaiColors.warn,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             IconButton(
               tooltip: bi('Lock · பூட்டு'),
               icon: const Icon(Icons.lock_outline),

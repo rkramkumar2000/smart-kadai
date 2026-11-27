@@ -114,7 +114,7 @@ Future<Uint8List> buildBillPdf(
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Bill ${b.number}', style: bold),
+              pw.Text('Bill ${b.label}', style: bold),
               pw.Text(when, style: small),
             ],
           ),
@@ -227,11 +227,47 @@ Future<bool> printBill(AppState s, SavedBill b) {
   final due = cid == null ? null : s.customers.byId(cid)?.balance;
   final paper = BillPaper.fromCode(s.repo.setting('bill_paper', '80mm'));
   return Printing.layoutPdf(
-    name: 'Bill ${b.number}',
+    name: 'Bill ${b.label}',
     format: paper.format,
     onLayout: (_) => buildBillPdf(b, shop, paper, balanceDue: due),
   );
 }
+
+/// Prints straight to the PC's default printer with no dialog, for bills
+/// sent by staff phones. Opens the print dialog if no printer is set.
+Future<bool> printBillDirect(AppState s, SavedBill b) async {
+  try {
+    final printers = await Printing.listPrinters();
+    final def = printers.where((p) => p.isDefault).firstOrNull;
+    if (def != null) {
+      final paper = BillPaper.fromCode(s.repo.setting('bill_paper', '80mm'));
+      final cid = b.bill.customerId;
+      return await Printing.directPrintPdf(
+        printer: def,
+        name: 'Bill ${b.label}',
+        format: paper.format,
+        onLayout: (_) => buildBillPdf(
+          b,
+          _shop(s),
+          paper,
+          balanceDue: cid == null ? null : s.customers.byId(cid)?.balance,
+        ),
+      );
+    }
+  } on Object {
+    // Fall back to the dialog.
+  }
+  return printBill(s, b);
+}
+
+ShopHeader _shop(AppState s) => ShopHeader(
+  name: s.shopName,
+  address: s.repo.setting('shop_address'),
+  phone: s.repo.setting('shop_phone'),
+  gstin: s.repo.setting('shop_gstin'),
+  footer: s.repo.setting('bill_footer', 'Thank you. Visit again!'),
+  upiId: s.repo.setting('upi_id'),
+);
 
 /// Printer fonts have only English letters; other letters become "?".
 String _latin(String t) => t.replaceAll(RegExp(r'[^\x20-\x7E]'), '?');
@@ -245,7 +281,7 @@ String billText(SavedBill b, String shopName) {
   final out = StringBuffer()
     ..writeln('*$shopName*')
     ..writeln(
-      'Bill ${b.number} · ${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}',
+      'Bill ${b.label} · ${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.year}',
     )
     ..writeln();
   for (final l in b.bill.lines) {

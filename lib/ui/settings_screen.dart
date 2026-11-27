@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../auth/auth.dart';
 import '../billing/bill.dart';
 import '../printing/bill_printer.dart';
+import 'phones_section.dart';
 import 'save_file.dart';
 import 'theme.dart';
 
@@ -187,8 +188,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-    name.dispose();
-    pin.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     setState(() {});
   }
 
@@ -325,155 +326,178 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: const TextStyle(color: KadaiColors.quiet),
                 ),
               ]),
-              _section('Shop details on the bill', [
-                _field('shop_name', 'Shop name · கடை பெயர்'),
-                _field('shop_address', 'Address'),
-                Row(
-                  children: [
-                    Expanded(child: _field('shop_phone', 'Phone')),
-                    const SizedBox(width: 12),
-                    Expanded(child: _field('shop_gstin', 'GSTIN (if any)')),
-                  ],
-                ),
-                _field(
-                  'upi_id',
-                  'Shop UPI ID, like ramstores@okaxis (for the pay QR code)',
-                ),
-                _field('bill_footer', 'Line at the bottom of the bill'),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    onPressed: _saveShop,
-                    child: const Text('Save shop details'),
-                  ),
-                ),
-              ]),
-              _section('Bill printing', [
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final p in BillPaper.values)
-                      ChoiceChip(
-                        label: Text(p.label),
-                        selected: paper == p,
-                        onSelected: (_) => setState(
-                          () => s.repo.setSetting('bill_paper', p.code),
+              if (s.isLinkedPhone)
+                _section(tt('Shop PC', 'கடை கணினி'), [ShopPcSection(state: s)])
+              else ...[
+                if (s.canJoinPc)
+                  _section(
+                    tt('Bill through the shop PC', 'கடை கணினி வழியாக பில்'),
+                    [
+                      Text(
+                        t(
+                          'Staff phones can send every bill to the shop PC, so there is one stock and one set of reports.',
+                          'போன்களின் பில்கள் கடை கணினிக்கு போகும். ஒரே இருப்பு, ஒரே அறிக்கை.',
                         ),
+                        style: const TextStyle(color: KadaiColors.quiet),
                       ),
-                  ],
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Print every bill when it is saved'),
-                  subtitle: const Text(
-                    'Otherwise press "Print bill" after saving.',
+                      const SizedBox(height: 10),
+                      ConnectToPcButtons(state: s),
+                    ],
+                  )
+                else if (!isPhone)
+                  _section(tt('Staff phones', 'பணியாளர் போன்கள்'), [
+                    PcPhonesSection(state: s),
+                  ]),
+                _section('Shop details on the bill', [
+                  _field('shop_name', 'Shop name · கடை பெயர்'),
+                  _field('shop_address', 'Address'),
+                  Row(
+                    children: [
+                      Expanded(child: _field('shop_phone', 'Phone')),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('shop_gstin', 'GSTIN (if any)')),
+                    ],
                   ),
-                  value: autoPrint,
-                  onChanged: (v) => setState(
-                    () => s.repo.setSetting('auto_print', v ? '1' : '0'),
+                  _field(
+                    'upi_id',
+                    'Shop UPI ID, like ramstores@okaxis (for the pay QR code)',
                   ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: _testPrint,
-                    icon: const Icon(Icons.print_outlined),
-                    label: const Text('Print a test bill'),
+                  _field('bill_footer', 'Line at the bottom of the bill'),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: _saveShop,
+                      child: const Text('Save shop details'),
+                    ),
                   ),
-                ),
-              ]),
-              _section('Logins · உள்நுழைவு', [
-                for (final u in users)
-                  ListTile(
+                ]),
+                _section('Bill printing', [
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final p in BillPaper.values)
+                        ChoiceChip(
+                          label: Text(p.label),
+                          selected: paper == p,
+                          onSelected: (_) => setState(
+                            () => s.repo.setSetting('bill_paper', p.code),
+                          ),
+                        ),
+                    ],
+                  ),
+                  SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      u.isOwner ? Icons.verified_user_outlined : Icons.person,
+                    title: const Text('Print every bill when it is saved'),
+                    subtitle: const Text(
+                      'Otherwise press "Print bill" after saving.',
                     ),
-                    title: Text(u.name, style: const TextStyle(fontSize: 16)),
-                    subtitle: Text(u.role.label),
-                    trailing: Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton(
-                          onPressed: () => _userDialog(u),
-                          child: const Text('Change PIN'),
-                        ),
-                        if (u.id != s.user?.id)
-                          TextButton(
-                            onPressed: () => _remove(u),
-                            style: TextButton.styleFrom(
-                              foregroundColor: KadaiColors.danger,
-                            ),
-                            child: const Text('Remove'),
+                    value: autoPrint,
+                    onChanged: (v) => setState(
+                      () => s.repo.setSetting('auto_print', v ? '1' : '0'),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: _testPrint,
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Print a test bill'),
+                    ),
+                  ),
+                ]),
+                _section('Logins · உள்நுழைவு', [
+                  for (final u in users)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        u.isOwner ? Icons.verified_user_outlined : Icons.person,
+                      ),
+                      title: Text(u.name, style: const TextStyle(fontSize: 16)),
+                      subtitle: Text(u.role.label),
+                      trailing: Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => _userDialog(u),
+                            child: const Text('Change PIN'),
                           ),
-                      ],
+                          if (u.id != s.user?.id)
+                            TextButton(
+                              onPressed: () => _remove(u),
+                              style: TextButton.styleFrom(
+                                foregroundColor: KadaiColors.danger,
+                              ),
+                              child: const Text('Remove'),
+                            ),
+                        ],
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: () => _userDialog(),
+                      icon: const Icon(Icons.person_add_alt),
+                      label: const Text('Add a login'),
                     ),
                   ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: () => _userDialog(),
-                    icon: const Icon(Icons.person_add_alt),
-                    label: const Text('Add a login'),
+                ]),
+                _section('Reading supplier bill photos', [
+                  const Text(
+                    'Bill photos are read by Claude, an AI service from '
+                    'Anthropic. It needs an API key from console.anthropic.com '
+                    'and an internet connection. Each bill costs a few rupees. '
+                    'Everything else in Smart Kadai works without internet.',
+                    style: TextStyle(color: KadaiColors.quiet),
                   ),
-                ),
-              ]),
-              _section('Reading supplier bill photos', [
-                const Text(
-                  'Bill photos are read by Claude, an AI service from '
-                  'Anthropic. It needs an API key from console.anthropic.com '
-                  'and an internet connection. Each bill costs a few rupees. '
-                  'Everything else in Smart Kadai works without internet.',
-                  style: TextStyle(color: KadaiColors.quiet),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _aiKey,
-                        obscureText: !_showKey,
-                        decoration: InputDecoration(
-                          labelText: 'API key',
-                          suffixIcon: IconButton(
-                            onPressed: () =>
-                                setState(() => _showKey = !_showKey),
-                            icon: Icon(
-                              _showKey
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _aiKey,
+                          obscureText: !_showKey,
+                          decoration: InputDecoration(
+                            labelText: 'API key',
+                            suffixIcon: IconButton(
+                              onPressed: () =>
+                                  setState(() => _showKey = !_showKey),
+                              icon: Icon(
+                                _showKey
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton(
-                      onPressed: () {
-                        s.repo.setSetting('ai_key', _aiKey.text.trim());
-                        _snack('AI key saved');
-                      },
-                      child: const Text('Save key'),
-                    ),
-                  ],
-                ),
-              ]),
-              _section('Backup', [
-                const Text(
-                  'Save a copy of all products, bills and purchases. '
-                  'Do this every week and keep it on a pen drive.',
-                  style: TextStyle(color: KadaiColors.quiet),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: _backup,
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('Back up now'),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: () {
+                          s.repo.setSetting('ai_key', _aiKey.text.trim());
+                          _snack('AI key saved');
+                        },
+                        child: const Text('Save key'),
+                      ),
+                    ],
                   ),
-                ),
-              ]),
+                ]),
+                _section('Backup', [
+                  const Text(
+                    'Save a copy of all products, bills and purchases. '
+                    'Do this every week and keep it on a pen drive.',
+                    style: TextStyle(color: KadaiColors.quiet),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: _backup,
+                      icon: const Icon(Icons.save_alt),
+                      label: const Text('Back up now'),
+                    ),
+                  ),
+                ]),
+              ],
             ],
           ),
         ),

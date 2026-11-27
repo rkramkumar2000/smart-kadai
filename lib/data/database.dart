@@ -16,7 +16,7 @@ class AppDatabase {
 
   final Database db;
 
-  static const _schemaVersion = 5;
+  static const _schemaVersion = 6;
 
   void _migrate() {
     final v = db.userVersion;
@@ -233,6 +233,36 @@ ALTER TABLE products ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0;
 ALTER TABLE product_variants ADD COLUMN wholesale_price REAL NOT NULL DEFAULT 0;
 ALTER TABLE customers ADD COLUMN is_wholesale INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sales ADD COLUMN wholesale INTEGER NOT NULL DEFAULT 0;
+''');
+    }
+    if (v < 6) {
+      // Staff phones that bill through the shop PC.
+      db.execute('''
+-- On the PC: phones allowed to send bills.
+CREATE TABLE devices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token TEXT NOT NULL,
+  paired_at TEXT NOT NULL,
+  last_seen TEXT,
+  active INTEGER NOT NULL DEFAULT 1
+);
+
+-- On a phone: bills and changes still to be sent to the PC.
+CREATE TABLE sync_outbox (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  ref_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  tries INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT ''
+);
+
+-- Which phone made a bill, and its number there.
+ALTER TABLE sales ADD COLUMN device_id TEXT;
+ALTER TABLE sales ADD COLUMN device_bill_no INTEGER;
+-- On a phone: the PC's number for the bill once it is sent.
+ALTER TABLE sales ADD COLUMN pc_bill_no INTEGER;
 ''');
     }
     db.userVersion = _schemaVersion;

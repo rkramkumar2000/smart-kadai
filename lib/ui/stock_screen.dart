@@ -107,7 +107,8 @@ class _StockScreenState extends State<StockScreen> {
         ),
       ),
     );
-    countCtl.dispose();
+    // The dialog still uses its text boxes while it closes, so they are
+    // left for Dart to clean up instead of being disposed here.
     if (result == null) return;
     final delta = roundQty(result - p.stockQty);
     if (delta != 0) s.adjustStock(p, delta, reason);

@@ -6,7 +6,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app_state.dart';
 import 'data/database.dart';
-import 'data/shop_repository.dart';
+import 'printing/bill_printer.dart';
+import 'sync/shop_host.dart';
 import 'voice/chrome_voice_bridge.dart';
 import 'voice/phone_speech_service.dart';
 import 'voice/speech_service.dart';
@@ -19,8 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = await getApplicationSupportDirectory();
   await Directory(dir.path).create(recursive: true);
-  final db = AppDatabase.open(p.join(dir.path, 'smart_kadai.db'));
-  final repo = ShopRepository(db)..seedIfEmpty();
+  final linkedFlag = File(p.join(dir.path, 'billing_through_pc'));
 
   final SpeechService voice;
   if (Platform.isAndroid || Platform.isIOS) {
@@ -38,7 +38,39 @@ Future<void> main() async {
     }
     voice = chrome;
   }
-  runApp(SmartKadaiApp(state: AppState(repo, speech: voice)));
+  final host = ShopHost(
+    openOwn: () => AppDatabase.open(p.join(dir.path, 'smart_kadai.db')),
+    // The shop PC's copy, kept apart from the phone's own shop.
+    openLinked: () => AppDatabase.open(p.join(dir.path, 'shop_pc_copy.db')),
+    rememberLinked: (on) async {
+      if (on) {
+        await linkedFlag.writeAsString('1');
+      } else if (linkedFlag.existsSync()) {
+        await linkedFlag.delete();
+      }
+    },
+    linked: (Platform.isAndroid || Platform.isIOS) && linkedFlag.existsSync(),
+    speech: voice,
+    isPhone: Platform.isAndroid || Platform.isIOS,
+  );
+  final s = host.value;
+  // Bills from staff phones print on the PC's bill printer if asked.
+  s.phoneBillArrived = (id) {
+    if (s.repo.setting('print_phone_bills') != '1') return;
+    final b = s.savedBill(id);
+    if (b != null) printBillDirect(s, b);
+  };
+  if (!s.isLinkedPhone && s.phonesOn) {
+    // The shop PC: phones on the Wi-Fi can send bills again.
+    await s.setPhonesOn(true);
+  }
+  runApp(
+    ValueListenableBuilder<AppState>(
+      valueListenable: host,
+      builder: (_, state, _) =>
+          SmartKadaiApp(key: ObjectKey(state), state: state),
+    ),
+  );
 }
 
 class SmartKadaiApp extends StatelessWidget {

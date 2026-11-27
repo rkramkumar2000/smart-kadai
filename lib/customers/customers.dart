@@ -93,6 +93,7 @@ ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
         c.isWholesale ? 1 : 0,
       ],
     );
+    shop.onLocalChange?.call('customer', c.id);
     return byId(c.id)!;
   }
 
@@ -106,16 +107,18 @@ ON CONFLICT(id) DO UPDATE SET name = excluded.name, phone = excluded.phone,
   }) {
     if (amount <= 0) return;
     final now = DateTime.now().toIso8601String();
+    final id = shop.newId();
     shop.transaction(() {
       _db.execute(
         'INSERT INTO customer_payments (id, customer_id, amount, mode, note, created_at, user_id) VALUES (?,?,?,?,?,?,?)',
-        [shop.newId(), customerId, amount, mode, note, now, userId],
+        [id, customerId, amount, mode, note, now, userId],
       );
       _db.execute(
         'UPDATE customers SET balance = ROUND(balance - ?, 2), updated_at = ? WHERE id = ?',
         [amount, now, customerId],
       );
     });
+    shop.onLocalChange?.call('customer_payment', id);
   }
 
   /// Credit bills and payments, newest first.
