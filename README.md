@@ -20,18 +20,59 @@ desktop app comes first; Android follows from the same Flutter code.
   items in one breath, quantity before or after the name, short names,
   spelling and pronunciation differences, and filler words. Unsure matches are
   shown for confirmation, and every correction is learned.
-- **Billing screen**: type, scan a barcode (USB scanners type into the search
-  box), tap quick items, or speak. Shows what was heard, the matched product,
+- **Billing screen**: speak (through Chrome, below), type, scan a barcode
+  (USB scanners type into the search box), or tap quick items. Shows what was heard, the matched product,
   size, quantity and price, with manual correction. Cash, UPI or credit saves
   the bill and lowers stock.
+- **Login**: the owner sets a 4-digit PIN on first run. Staff logins can bill
+  and see stock, but not profit, prices, purchases, reports or settings.
+  Five wrong PINs lock the login for 30 seconds. The lock button returns to
+  the PIN screen.
+- **Stock**: levels, low and out-of-stock alerts (badge in the menu), stock
+  value, corrections with a reason, history per product, and an order list
+  sent on WhatsApp.
+- **Purchases**: suppliers and what the shop owes them, payments, supplier
+  bills typed in or read from a photo or PDF. Saving raises stock and updates
+  the cost price including GST.
+- **Reading bill photos**: uses Claude (Anthropic API, key in Settings). The
+  owner checks every line before saving.
+- **Reports**: today, last 7 days, this month. Sales, profit, purchases,
+  supplier dues, sales by day, payment split, best sellers. Sales and purchase
+  lines export to Excel (CSV with Tamil names).
+- **Bill printing**: 58 mm or 80 mm thermal roll, or A5, through the Windows
+  print dialog. Optional print on every bill.
+- **Settings**: shop details on the bill, UPI ID, printer, logins, AI key,
+  backup.
+- **Import products from Excel**: download the sample sheet, fill one row per
+  size, and import .xlsx or CSV. Same English name updates the product.
+- **Credit book (kadan)**: customers, what each owes, credit bills, money
+  received, account history and WhatsApp reminders.
+- **Billing extras**: customer on the bill (F4), discount in rupees or %
+  (F6), hold a bill and serve the next customer (F8), UPI QR with the bill
+  amount, and the bill sent to the customer on WhatsApp.
+- **Expenses**: rent, electricity, salary and more, so Reports show real
+  profit.
+- Voice: say "ok" between items: "ok hamam 1 packet ok salt 1 kg".
 - Offline local SQLite database on the PC.
 
-## Not yet connected
+## Voice through Chrome (free)
 
-- **The microphone and speech-to-text service.** The app talks to speech
-  through `lib/voice/speech_service.dart`. Until a service is chosen (phase 0
-  test: Sarvam AI, Google Cloud Speech-to-Text or AI4Bharat IndicConformer),
-  type what was said into the billing search box to exercise the same parser.
+Speech-to-text uses Google Chrome's built-in speech recognition, which is
+free and supports Tamil (ta-IN) with words streaming while you speak.
+
+1. When Smart Kadai starts, it opens a small **Smart Kadai voice** window in
+   Chrome. The first time, click **Allow** for the microphone.
+2. Click the big button in that window, or press **F2** in Smart Kadai, and
+   speak. Each item goes on the bill when you finish saying it.
+3. Choose **English (en-IN)** in the window if the speaker uses only English.
+
+Needs Google Chrome and internet. The page runs on `127.0.0.1:47811` on this
+PC only. Every phrase heard is saved in the `voice_log` table with what it
+became, so accuracy can be checked after a few days at the counter. The
+speech service is behind `lib/voice/speech_service.dart`, so a paid service
+(for example Sarvam AI) can replace Chrome later without changing billing.
+
+To try the helper without the app: `dart run tool/voice_helper_preview.dart`.
 
 ## Run and test
 
@@ -53,4 +94,9 @@ from the run's **smart-kadai-windows** artifact.
 | `lib/data` | SQLite schema, repository, starter catalogue |
 | `lib/voice` | Tamil transliteration, sound keys, number and unit words, utterance parser, product matcher, speech service interface |
 | `lib/billing` | Bill and bill lines, stock change per line |
-| `lib/ui` | Desktop screens: shell, billing, products, product form |
+| `lib/auth` | Logins, PIN hashing, owner and staff permissions |
+| `lib/customers` | Credit book and expenses |
+| `lib/purchases` | Suppliers, purchase bills, payments, bill photo reader |
+| `lib/reports` | Sales and purchase figures, CSV export |
+| `lib/printing` | Bill PDF for thermal rolls and A5 |
+| `lib/ui` | Desktop screens: login, shell, billing, products, stock, purchases, reports, settings |

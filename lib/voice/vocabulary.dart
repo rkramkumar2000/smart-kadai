@@ -99,16 +99,17 @@ const Map<String, Unit> _unitWords = {
   'box': Unit.box,
   'boxes': Unit.box,
   'petti': Unit.box,
-  'மூட்டை': Unit.bag,
   'bag': Unit.bag,
   'bags': Unit.bag,
-  'mootai': Unit.bag,
-  'moottai': Unit.bag,
 };
 
 /// Short unit abbreviations, matched on the raw lower-case word because
 /// sound keys would mix them up (g and kg sound-fold to the same key).
+/// மூட்டை (sack) is here too: its sound key is the same as முட்டை (egg).
 const Map<String, Unit> abbreviationUnits = {
+  'மூட்டை': Unit.bag,
+  'mootai': Unit.bag,
+  'moottai': Unit.bag,
   'kg': Unit.kg,
   'kgs': Unit.kg,
   'g': Unit.gram,
@@ -125,8 +126,20 @@ const Map<String, Unit> abbreviationUnits = {
   'doz': Unit.dozen,
 };
 
-/// Words that only join items: "and", "apram" (then), "um".
+/// Words that only join items: "and", "apram" (then), "um", and "ok",
+/// which owners say before each item: "ok hamam 1 packet ok salt 1 kg".
 const List<String> _joinWords = [
+  'ok',
+  'okay',
+  'okey',
+  'okk',
+  'okie',
+  'next',
+  'sari',
+  'ஓகே',
+  'ஓக்கே',
+  'ஓகோ',
+  'சரி',
   'and',
   'then',
   'also',

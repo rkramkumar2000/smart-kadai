@@ -1,4 +1,4 @@
-package `in`.smartkadai.smart_kadai
+package com.smartkadai.app
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:smart_kadai/app_state.dart';
+import 'package:smart_kadai/auth/auth.dart';
 import 'package:smart_kadai/data/database.dart';
 import 'package:smart_kadai/data/shop_repository.dart';
 import 'package:smart_kadai/main.dart';
@@ -10,7 +11,9 @@ void main() {
 
   setUp(() {
     final repo = ShopRepository(AppDatabase.inMemory())..seedIfEmpty();
+    repo.setSetting('setup_done', '1');
     state = AppState(repo);
+    state.login(state.auth.createUser('Ram', Role.owner, '1234'));
   });
 
   Future<void> pumpApp(WidgetTester t) async {
@@ -70,10 +73,109 @@ void main() {
     );
     await t.tap(find.text('Save'));
     await t.pumpAndSettle();
+    expect(find.text('Enter a selling price.'), findsOneWidget);
+    await t.enterText(
+      find.byWidgetPredicate(
+        (w) =>
+            w is TextField &&
+            (w.decoration?.labelText ?? '').startsWith('Selling price per'),
+      ),
+      '600',
+    );
+    await t.tap(find.text('Save'));
+    await t.pumpAndSettle();
 
     final ghee = state.products.firstWhere((p) => p.nameEn == 'Ghee');
     expect(ghee.nameTa, 'நெய்');
     expect(ghee.code, 'P0016');
     expect(ghee.variants, hasLength(1));
+    expect(ghee.variants.single.sellingPrice, 600);
+    expect(ghee.nameTanglish, 'ney');
+  });
+
+  testWidgets('every owner screen opens', (t) async {
+    await pumpApp(t);
+    for (final name in [
+      'Credit book',
+      'Stock',
+      'Purchases',
+      'Reports',
+      'Settings',
+    ]) {
+      await t.tap(find.text(name).first);
+      await t.pumpAndSettle();
+    }
+    expect(find.text('Back up now'), findsOneWidget);
+  });
+
+  testWidgets('staff do not see purchases, reports or settings', (t) async {
+    state.login(state.auth.createUser('Kumar', Role.staff, '5678'));
+    await pumpApp(t);
+    expect(find.text('Stock'), findsWidgets);
+    expect(find.text('Reports'), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+  });
+
+  testWidgets('lock, then log in again with the PIN', (t) async {
+    await pumpApp(t);
+    await t.tap(find.byTooltip('Lock · பூட்டு'));
+    await t.pumpAndSettle();
+    expect(find.text('Enter your PIN'), findsOneWidget);
+    for (final d in ['1', '2', '3', '4']) {
+      await t.tap(find.text(d));
+      await t.pump();
+    }
+    await t.pumpAndSettle();
+    expect(state.user?.name, 'Ram');
+  });
+
+  testWidgets('first run asks for the owner name and PIN twice', (t) async {
+    final repo = ShopRepository(AppDatabase.inMemory())..seedIfEmpty();
+    state = AppState(repo);
+    await pumpApp(t);
+    expect(find.text('Welcome to Smart Kadai'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'Ram');
+    for (var round = 0; round < 2; round++) {
+      for (final d in ['4', '3', '2', '1']) {
+        await t.tap(find.text(d));
+        await t.pump();
+      }
+      await t.pumpAndSettle();
+    }
+    expect(state.user?.isOwner, isTrue);
+    expect(state.auth.verify(state.user!.id, '4321'), isNotNull);
+
+    // The first-day guide follows: shop, UPI, paper, products.
+    expect(find.text('Your shop'), findsOneWidget);
+    await t.enterText(find.byType(TextField).first, 'Ram Stores');
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).first, 'ramstores@okaxis');
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('58 mm roll'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Next'));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Start billing'));
+    await t.pumpAndSettle();
+    expect(state.shopName, 'Ram Stores');
+    expect(state.repo.setting('upi_id'), 'ramstores@okaxis');
+    expect(state.repo.setting('bill_paper'), '58mm');
+    expect(find.text('Credit book'), findsOneWidget);
+  });
+
+  testWidgets('Tamil only screen and bigger text', (t) async {
+    state.repo.setSetting('ui_lang', 'tamil');
+    state.repo.setSetting('text_scale', '1.3');
+    await pumpApp(t);
+    expect(find.text('கடன்'), findsWidgets);
+    expect(find.text('Credit book'), findsNothing);
+    await t.tap(find.text('அமைப்பு').first);
+    await t.pumpAndSettle();
+    expect(find.text('எழுத்து அளவு 130%'), findsOneWidget);
+    await t.tap(find.text('English + தமிழ்'));
+    await t.pumpAndSettle();
+    expect(find.text('Credit book'), findsWidgets);
   });
 }

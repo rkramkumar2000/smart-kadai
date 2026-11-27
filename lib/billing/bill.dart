@@ -21,6 +21,8 @@ class BillLine {
     required this.count,
     required this.enteredBy,
     this.spokenText,
+    this.wholesale = false,
+    this.price,
   });
 
   final Product product;
@@ -33,9 +35,37 @@ class BillLine {
   final EntryMethod enteredBy;
   final String? spokenText;
 
-  double get unitPrice => variant?.sellingPrice ?? product.sellingPrice;
+  /// Priced at the wholesale rate.
+  final bool wholesale;
+
+  /// A price the owner typed for this bill only. Null uses the list price.
+  final double? price;
+
+  /// The list price for this line (retail or wholesale).
+  double get listPrice =>
+      variant?.priceFor(wholesale: wholesale) ??
+      product.priceFor(wholesale: wholesale);
+
+  double get unitPrice => price ?? listPrice;
+
+  /// Same line at a price typed by the owner. Null goes back to the list.
+  BillLine withPrice(double? p) => BillLine(
+    product: product,
+    variant: variant,
+    count: count,
+    enteredBy: enteredBy,
+    spokenText: spokenText,
+    wholesale: wholesale,
+    price: p,
+  );
 
   double get total => (unitPrice * count * 100).roundToDouble() / 100;
+
+  /// What this line cost the shop, for profit reports.
+  double get costTotal =>
+      ((variant?.purchasePrice ?? product.purchasePrice) * count * 100)
+          .roundToDouble() /
+      100;
 
   /// How much the product's stock goes down, in its stock unit.
   /// 1 x Groundnut 250 GRAM with stock in KG reduces stock by 0.25.
@@ -55,6 +85,17 @@ class BillLine {
     count: c,
     enteredBy: enteredBy,
     spokenText: spokenText,
+    wholesale: wholesale,
+    price: price,
+  );
+
+  BillLine withWholesale(bool w) => BillLine(
+    product: product,
+    variant: variant,
+    count: count,
+    enteredBy: enteredBy,
+    spokenText: spokenText,
+    wholesale: w,
   );
 
   BillLine withVariant(ProductVariant? v) => BillLine(
@@ -63,19 +104,47 @@ class BillLine {
     count: count,
     enteredBy: enteredBy,
     spokenText: spokenText,
+    wholesale: wholesale,
   );
 }
 
 class Bill {
   final List<BillLine> lines = [];
 
-  double get total =>
+  /// Wholesale bill: every line uses the wholesale price.
+  bool wholesale = false;
+
+  /// Switches the bill between retail and wholesale prices.
+  void setWholesale(bool w) {
+    wholesale = w;
+    for (var i = 0; i < lines.length; i++) {
+      lines[i] = lines[i].withWholesale(w);
+    }
+  }
+
+  /// Rupees taken off the whole bill.
+  double discount = 0;
+
+  /// The customer the bill is for. Needed for credit (kadan) bills.
+  String? customerId;
+  String customerName = '';
+  String customerPhone = '';
+
+  /// Sum of the lines before discount.
+  double get subtotal =>
       (lines.fold<double>(0, (s, l) => s + l.total) * 100).roundToDouble() /
       100;
+
+  /// What the customer pays.
+  double get total {
+    final t = subtotal - discount;
+    return t <= 0 ? 0 : (t * 100).roundToDouble() / 100;
+  }
 
   /// Adds [line], merging with an identical product and variant already on
   /// the bill so repeated scans increase the count.
   void add(BillLine line) {
+    if (line.wholesale != wholesale) line = line.withWholesale(wholesale);
     final i = lines.indexWhere(
       (l) =>
           l.product.id == line.product.id && l.variant?.id == line.variant?.id,

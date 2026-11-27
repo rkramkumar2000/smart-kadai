@@ -1,0 +1,282 @@
+import 'dart:async';
+
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_recognition_error.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+
+import 'speech_service.dart';
+
+/// Voice on an Android phone: Google's speech recognition built into the
+/// phone, in Tamil (ta-IN), and the phone's own voice for replies.
+///
+/// Android stops listening after a pause, so while the owner has the mic
+/// on, this starts it again after every phrase.
+class PhoneSpeechService implements SpeechService {
+  PhoneSpeechService({SpeechToText? stt, FlutterTts? tts})
+    : _stt = stt ?? SpeechToText(),
+      _tts = tts ?? FlutterTts();
+
+  final SpeechToText _stt;
+  final FlutterTts _tts;
+  final _results = StreamController<SpeechResult>.broadcast();
+  final _changes = StreamController<void>.broadcast();
+
+  bool _ready = false;
+  bool _wanted = false;
+  bool _speaking = false;
+  String? _problem;
+  String _locale = 'ta_IN';
+  Timer? _restart;
+  Timer? _watchdog;
+
+  @override
+  bool get isAvailable => _ready;
+
+  @override
+  Stream<void> get changes => _changes.stream;
+
+  @override
+  bool get isListening => _wanted;
+
+  @override
+  Stream<SpeechResult> get results => _results.stream;
+
+  @override
+  String? get problem => _problem;
+
+  void _changed() => _changes.add(null);
+
+  /// Asks for the microphone and checks that Tamil speech is installed.
+  @override
+  Future<void> open() async {
+    if (_ready) return;
+    try {
+      _ready = await _stt.initialize(
+        onError: _onError,
+        onStatus: _onStatus,
+        finalTimeout: const Duration(milliseconds: 800),
+      );
+    } catch (_) {
+      _ready = false;
+    }
+    if (!_ready) {
+      _problem =
+          'Allow the microphone for Smart Kadai in phone Settings, and keep '
+          'the Google app installed. · மைக்கை அனுமதியுங்கள்.';
+    } else {
+      // Many phones list only a few languages here even though Google's
+      // online recogniser understands Tamil, so ta_IN is tried anyway. If
+      // the phone refuses it, the error handler falls back to en_IN.
+      _problem = null;
+      try {
+        final locales = await _stt.locales();
+        final ta = locales.where(
+          (l) => l.localeId.toLowerCase().startsWith('ta'),
+        );
+        _locale = ta.isNotEmpty ? ta.first.localeId : 'ta_IN';
+      } catch (_) {
+        _locale = 'ta_IN';
+      }
+      try {
+        await _tts.awaitSpeakCompletion(true);
+        await _tts.setSpeechRate(0.5);
+      } catch (_) {}
+    }
+    _changed();
+  }
+
+  @override
+  Future<void> start() async {
+    if (!_ready) await open();
+    if (!_ready) return;
+    _wanted = true;
+    _changed();
+    // Some phones stop listening without saying so. Check every 2 seconds
+    // and start again while the owner has the mic on.
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_wanted && !_speaking && !_stt.isListening) _listen();
+    });
+    await _listen();
+  }
+
+  @override
+  Future<void> stop() async {
+    _wanted = false;
+    _restart?.cancel();
+    _watchdog?.cancel();
+    await _stt.stop();
+    _flush();
+    _changed();
+  }
+
+  bool _starting = false;
+
+  Future<void> _listen() async {
+    if (!_wanted || _speaking || _starting || _stt.isListening) return;
+    _starting = true;
+    _phrases.newSession();
+    try {
+      await _stt.listen(
+        onResult: _onResult,
+        listenOptions: SpeechListenOptions(
+          localeId: _locale,
+          partialResults: true,
+          cancelOnError: false,
+          listenMode: ListenMode.dictation,
+          pauseFor: const Duration(seconds: 3),
+          listenFor: const Duration(minutes: 1),
+        ),
+      );
+    } catch (_) {
+      _again();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  /// Starts listening again shortly, unless the owner switched it off.
+  void _again() {
+    _restart?.cancel();
+    if (!_wanted || _speaking) return;
+    _restart = Timer(const Duration(milliseconds: 300), _listen);
+  }
+
+  late final _phrases = PhraseAssembler(_results.add);
+
+  void _onResult(SpeechRecognitionResult r) {
+    if (_speaking) return;
+    _problem = null;
+    _phrases.add(
+      r.recognizedWords,
+      isFinal: r.finalResult,
+      alternatives: [for (final a in r.alternates) a.recognizedWords],
+    );
+  }
+
+  void _flush() => _phrases.flush();
+
+  void _onStatus(String status) {
+    if (status == SpeechToText.doneStatus ||
+        status == SpeechToText.notListeningStatus) {
+      _flush();
+      _again();
+    }
+  }
+
+  void _onError(SpeechRecognitionError e) {
+    switch (e.errorMsg) {
+      case 'error_no_match' || 'error_speech_timeout':
+        break; // Silence at the counter is normal.
+      case 'error_permission' || 'error_insufficient_permissions':
+        _problem =
+            'Allow the microphone for Smart Kadai in phone Settings. · '
+            'மைக்கை அனுமதியுங்கள்.';
+        _wanted = false;
+        _watchdog?.cancel();
+      case 'error_network' || 'error_network_timeout' || 'error_server':
+        _problem =
+            'No internet for voice. Turn on mobile data, or install offline '
+            'Tamil speech in the Google app. · இணையம் இல்லை.';
+      case 'error_language_not_supported' || 'error_language_unavailable':
+        // Listen in Indian English instead, and say how to add Tamil.
+        _locale = 'en_IN';
+        _problem =
+            'Tamil speech is not installed. Open Google app → Settings → '
+            'Voice → Languages and add தமிழ் (இந்தியா).';
+    }
+    _changed();
+    _again();
+  }
+
+  /// Says the reply. The mic is off while speaking so it does not hear
+  /// itself, then listening starts again.
+  @override
+  Future<void> say(String tamil, String english) async {
+    _flush();
+    _speaking = true;
+    _restart?.cancel();
+    try {
+      if (_stt.isListening) await _stt.stop();
+      final hasTamil = await _tts.isLanguageAvailable('ta-IN') == true;
+      await _tts.setLanguage(hasTamil ? 'ta-IN' : 'en-IN');
+      await _tts.speak(hasTamil ? tamil : english);
+    } catch (_) {
+      // No voice engine: the reply is skipped, billing goes on.
+    } finally {
+      _speaking = false;
+      _again();
+    }
+  }
+}
+
+/// Turns the phone's results into finished phrases for the bill.
+///
+/// Some phones never mark a result as final, or the final one is lost when
+/// listening restarts, so the last words heard are finished after a short
+/// silence. The phone also repeats earlier words in each result ("milk",
+/// then "milk sugar 1 kg"), so only the new part is sent.
+class PhraseAssembler {
+  PhraseAssembler(
+    this.emit, {
+    this.silence = const Duration(milliseconds: 1500),
+  });
+
+  final void Function(SpeechResult) emit;
+  final Duration silence;
+
+  String _partial = '';
+  List<String> _alts = const [];
+  String _sent = '';
+  Timer? _timer;
+
+  void add(
+    String text, {
+    required bool isFinal,
+    List<String> alternatives = const [],
+  }) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    final alts = [
+      for (final a in alternatives)
+        if (a.trim().isNotEmpty) a.trim(),
+    ];
+    _timer?.cancel();
+    if (isFinal) {
+      _partial = '';
+      _finish(t, alts);
+      return;
+    }
+    _partial = t;
+    _alts = alts;
+    emit(SpeechResult(t, isFinal: false, alternatives: alts));
+    _timer = Timer(silence, flush);
+  }
+
+  /// Finishes what was heard so far.
+  void flush() {
+    _timer?.cancel();
+    if (_partial.isEmpty) return;
+    final t = _partial;
+    _partial = '';
+    _finish(t, _alts);
+  }
+
+  /// A new listening session starts from nothing.
+  void newSession() {
+    flush();
+    _sent = '';
+  }
+
+  void _finish(String text, List<String> alts) {
+    var part = text;
+    if (_sent.isNotEmpty && text.startsWith(_sent)) {
+      part = text.substring(_sent.length).trim();
+      alts = const [];
+    }
+    _sent = text;
+    if (part.isEmpty) return;
+    emit(SpeechResult(part, isFinal: true, alternatives: alts));
+  }
+}

@@ -25,6 +25,7 @@ class ProductVariant {
     required this.stockFactor,
     required this.sellingPrice,
     this.purchasePrice = 0,
+    this.wholesalePrice = 0,
     this.barcode,
     this.isDefault = false,
     this.sort = 0,
@@ -46,6 +47,13 @@ class ProductVariant {
 
   final double sellingPrice;
   final double purchasePrice;
+
+  /// Price for wholesale customers. 0 means the same as [sellingPrice].
+  final double wholesalePrice;
+
+  /// Selling price for a retail or wholesale bill.
+  double priceFor({required bool wholesale}) =>
+      wholesale && wholesalePrice > 0 ? wholesalePrice : sellingPrice;
   final String? barcode;
   final bool isDefault;
   final int sort;
@@ -64,6 +72,7 @@ class ProductVariant {
     double? stockFactor,
     double? sellingPrice,
     double? purchasePrice,
+    double? wholesalePrice,
     String? barcode,
     bool? isDefault,
     int? sort,
@@ -75,6 +84,7 @@ class ProductVariant {
     stockFactor: stockFactor ?? this.stockFactor,
     sellingPrice: sellingPrice ?? this.sellingPrice,
     purchasePrice: purchasePrice ?? this.purchasePrice,
+    wholesalePrice: wholesalePrice ?? this.wholesalePrice,
     barcode: barcode ?? this.barcode,
     isDefault: isDefault ?? this.isDefault,
     sort: sort ?? this.sort,
@@ -104,6 +114,7 @@ class Product {
     this.barcode,
     this.purchasePrice = 0,
     this.sellingPrice = 0,
+    this.wholesalePrice = 0,
     this.minStock = 0,
     this.stockQty = 0,
     this.status = ProductStatus.active,
@@ -132,6 +143,13 @@ class Product {
   /// Selling price per one [stockUnit]; used for loose quantities.
   final double sellingPrice;
 
+  /// Wholesale price per one [stockUnit]. 0 means the same as retail.
+  final double wholesalePrice;
+
+  /// Loose price for a retail or wholesale bill.
+  double priceFor({required bool wholesale}) =>
+      wholesale && wholesalePrice > 0 ? wholesalePrice : sellingPrice;
+
   /// Alert when [stockQty] falls below this, in [stockUnit].
   final double minStock;
 
@@ -154,6 +172,7 @@ class Product {
   }
 
   Product copyWith({
+    String? id,
     String? code,
     String? nameEn,
     String? nameTa,
@@ -164,6 +183,7 @@ class Product {
     String? barcode,
     double? purchasePrice,
     double? sellingPrice,
+    double? wholesalePrice,
     double? minStock,
     Unit? stockUnit,
     double? stockQty,
@@ -171,7 +191,7 @@ class Product {
     DateTime? updatedAt,
     List<ProductVariant>? variants,
   }) => Product(
-    id: id,
+    id: id ?? this.id,
     code: code ?? this.code,
     nameEn: nameEn ?? this.nameEn,
     nameTa: nameTa ?? this.nameTa,
@@ -182,6 +202,7 @@ class Product {
     barcode: barcode ?? this.barcode,
     purchasePrice: purchasePrice ?? this.purchasePrice,
     sellingPrice: sellingPrice ?? this.sellingPrice,
+    wholesalePrice: wholesalePrice ?? this.wholesalePrice,
     minStock: minStock ?? this.minStock,
     stockUnit: stockUnit ?? this.stockUnit,
     stockQty: stockQty ?? this.stockQty,

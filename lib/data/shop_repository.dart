@@ -13,9 +13,23 @@ class ShopRepository {
 
   final AppDatabase _appDb;
   Database get _db => _appDb.db;
+
+  /// The database wrapper, for repositories that need their own queries.
+  AppDatabase get dbHandle => _appDb;
+
+  /// The raw database, for the other repositories that share it.
+  Database get db => _appDb.db;
   static const _uuid = Uuid();
 
   String newId() => _uuid.v4();
+
+  /// A phone linked to the shop PC listens here to send its bills,
+  /// products, customers and payments: kind is 'sale', 'product',
+  /// 'customer' or 'customer_payment'.
+  void Function(String kind, String id)? onLocalChange;
+
+  /// The id of the bill [saveSale] saved last.
+  String? lastSaleId;
 
   /// Loads the starter catalogue on first run.
   void seedIfEmpty() {
@@ -45,6 +59,7 @@ class ShopRepository {
               stockFactor: (r['stock_factor'] as num).toDouble(),
               sellingPrice: (r['selling_price'] as num).toDouble(),
               purchasePrice: (r['purchase_price'] as num).toDouble(),
+              wholesalePrice: (r['wholesale_price'] as num).toDouble(),
               barcode: r['barcode'] as String?,
               isDefault: (r['is_default'] as int) == 1,
               sort: r['sort'] as int,
@@ -66,6 +81,7 @@ class ShopRepository {
             barcode: r['barcode'] as String?,
             purchasePrice: (r['purchase_price'] as num).toDouble(),
             sellingPrice: (r['selling_price'] as num).toDouble(),
+            wholesalePrice: (r['wholesale_price'] as num).toDouble(),
             minStock: (r['min_stock'] as num).toDouble(),
             stockUnit: Unit.fromCode(r['stock_unit'] as String),
             stockQty: (r['stock_qty'] as num).toDouble(),
@@ -91,19 +107,20 @@ class ShopRepository {
 
   /// Inserts or updates a product and replaces its variants.
   void saveProduct(Product p) {
-    _transaction(() {
+    transaction(() {
       _db.execute(
         '''
 INSERT INTO products (id, code, name_en, name_ta, name_tanglish, category,
   brand, description, barcode, purchase_price, selling_price, min_stock,
-  stock_unit, stock_qty, status, created_at, updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  stock_unit, stock_qty, status, created_at, updated_at, wholesale_price)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET
   code=excluded.code, name_en=excluded.name_en, name_ta=excluded.name_ta,
   name_tanglish=excluded.name_tanglish, category=excluded.category,
   brand=excluded.brand, description=excluded.description,
   barcode=excluded.barcode, purchase_price=excluded.purchase_price,
   selling_price=excluded.selling_price, min_stock=excluded.min_stock,
+  wholesale_price=excluded.wholesale_price,
   stock_unit=excluded.stock_unit, status=excluded.status,
   updated_at=excluded.updated_at
 ''',
@@ -112,7 +129,7 @@ ON CONFLICT(id) DO UPDATE SET
           p.brand, p.description, _blankToNull(p.barcode), p.purchasePrice,
           p.sellingPrice, p.minStock, p.stockUnit.code, p.stockQty,
           p.status.code, p.createdAt.toIso8601String(),
-          p.updatedAt.toIso8601String(),
+          p.updatedAt.toIso8601String(), p.wholesalePrice,
         ],
       );
       final keep = p.variants.map((v) => v.id).toList();
@@ -128,28 +145,72 @@ ON CONFLICT(id) DO UPDATE SET
       }
       final stmt = _db.prepare('''
 INSERT INTO product_variants (id, product_id, unit, quantity, stock_factor,
-  selling_price, purchase_price, barcode, is_default, sort)
-VALUES (?,?,?,?,?,?,?,?,?,?)
+  selling_price, purchase_price, barcode, is_default, sort, wholesale_price)
+VALUES (?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET unit=excluded.unit, quantity=excluded.quantity,
   stock_factor=excluded.stock_factor, selling_price=excluded.selling_price,
   purchase_price=excluded.purchase_price, barcode=excluded.barcode,
-  is_default=excluded.is_default, sort=excluded.sort
+  is_default=excluded.is_default, sort=excluded.sort,
+  wholesale_price=excluded.wholesale_price
 ''');
       for (final v in p.variants) {
         stmt.execute([
           v.id, p.id, v.unit.code, v.quantity, v.stockFactor, //
           v.sellingPrice, v.purchasePrice, _blankToNull(v.barcode),
-          v.isDefault ? 1 : 0, v.sort,
+          v.isDefault ? 1 : 0, v.sort, v.wholesalePrice,
         ]);
       }
       stmt.close();
     });
+    onLocalChange?.call('product', p.id);
   }
 
-  /// Sets the stock of a product and records why.
-  void adjustStock(String productId, double delta, String reason) {
-    _transaction(() => _moveStock(productId, delta, reason, null));
+  /// Changes stock by [delta] and records why ("Spoiled", "Counted again").
+  void adjustStock(
+    String productId,
+    double delta,
+    String reason, {
+    String? userId,
+  }) {
+    transaction(
+      () => moveStock(
+        productId,
+        delta,
+        'CORRECTION',
+        null,
+        note: reason,
+        userId: userId,
+      ),
+    );
   }
+
+  /// Stock changes for one product, newest first.
+  List<StockMovement> stockHistory(String productId, {int limit = 100}) => _db
+      .select(
+        'SELECT * FROM stock_movements WHERE product_id = ? ORDER BY created_at DESC LIMIT ?',
+        [productId, limit],
+      )
+      .map(
+        (r) => StockMovement(
+          delta: (r['delta'] as num).toDouble(),
+          type: r['type'] as String,
+          note: r['note'] as String,
+          at: DateTime.parse(r['created_at'] as String),
+        ),
+      )
+      .toList();
+
+  // --------------------------------------------------------------- settings
+
+  String setting(String key, [String fallback = '']) {
+    final r = _db.select('SELECT value FROM settings WHERE key = ?', [key]);
+    return r.isEmpty ? fallback : r.first['value'] as String;
+  }
+
+  void setSetting(String key, String value) => _db.execute(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    [key, value],
+  );
 
   /// True when another product or variant already uses [barcode].
   bool barcodeInUse(String barcode, {String? exceptProductId}) {
@@ -185,34 +246,80 @@ ON CONFLICT(phrase_key) DO UPDATE SET product_id=excluded.product_id,
     );
   }
 
+  // -------------------------------------------------------------- voice log
+
+  void logVoice({
+    required String service,
+    required String heard,
+    required List<String> alternatives,
+    required String usedText,
+    required int sure,
+    required int unsure,
+    required String result,
+  }) {
+    _db.execute(
+      '''
+INSERT INTO voice_log (id, created_at, service, heard, alternatives,
+  used_text, sure_items, unsure_items, result)
+VALUES (?,?,?,?,?,?,?,?,?)''',
+      [
+        newId(), DateTime.now().toIso8601String(), service, heard, //
+        alternatives.join(' | '), usedText, sure, unsure, result,
+      ],
+    );
+  }
+
+  /// Recent voice phrases, newest first.
+  List<Map<String, Object?>> recentVoiceLog({int limit = 200}) => _db
+      .select('SELECT * FROM voice_log ORDER BY created_at DESC LIMIT ?', [
+        limit,
+      ])
+      .map((r) => Map<String, Object?>.from(r))
+      .toList();
+
   // ------------------------------------------------------------------ sales
 
   /// Saves the bill and lowers stock for every line, all or nothing.
   /// Returns the bill number.
-  int saveSale(Bill bill, PaymentMode mode) {
+  int saveSale(Bill bill, PaymentMode mode, {String? userId}) {
     late int billNo;
-    _transaction(() {
+    transaction(() {
       final last = _db.select('SELECT MAX(bill_no) AS n FROM sales').first['n'];
       billNo = ((last as int?) ?? 0) + 1;
       final saleId = newId();
       final now = DateTime.now().toIso8601String();
       _db.execute(
-        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode) VALUES (?,?,?,?,?)',
-        [saleId, billNo, now, bill.total, mode.code],
+        'INSERT INTO sales (id, bill_no, created_at, total, payment_mode, user_id, customer_id, discount, wholesale) VALUES (?,?,?,?,?,?,?,?,?)',
+        [
+          saleId, billNo, now, bill.total, mode.code, userId, //
+          bill.customerId, bill.discount, bill.wholesale ? 1 : 0,
+        ],
       );
+      if (mode == PaymentMode.credit) {
+        if (bill.customerId == null) {
+          throw StateError('A credit bill needs a customer');
+        }
+        _db.execute(
+          'UPDATE customers SET balance = ROUND(balance + ?, 2), updated_at = ? WHERE id = ?',
+          [bill.total, now, bill.customerId],
+        );
+      }
       final stmt = _db.prepare('''
 INSERT INTO sale_items (id, sale_id, product_id, variant_id, count,
-  unit_price, line_total, stock_delta, entered_by, spoken_text)
-VALUES (?,?,?,?,?,?,?,?,?,?)''');
+  unit_price, line_total, stock_delta, entered_by, spoken_text, cost_total)
+VALUES (?,?,?,?,?,?,?,?,?,?,?)''');
       for (final l in bill.lines) {
         stmt.execute([
           newId(), saleId, l.product.id, l.variant?.id, l.count, //
           l.unitPrice, l.total, l.stockDelta, l.enteredBy.name, l.spokenText,
+          l.costTotal,
         ]);
-        _moveStock(l.product.id, -l.stockDelta, 'SALE', saleId);
+        moveStock(l.product.id, -l.stockDelta, 'SALE', saleId, userId: userId);
       }
       stmt.close();
+      lastSaleId = saleId;
     });
+    onLocalChange?.call('sale', lastSaleId!);
     return billNo;
   }
 
@@ -228,18 +335,34 @@ VALUES (?,?,?,?,?,?,?,?,?,?)''');
 
   // ---------------------------------------------------------------- helpers
 
-  void _moveStock(String productId, double delta, String type, String? ref) {
+  /// Changes a product's stock and records the change. Call inside
+  /// [transaction].
+  void moveStock(
+    String productId,
+    double delta,
+    String type,
+    String? ref, {
+    String note = '',
+    String? userId,
+  }) {
+    final at = DateTime.now().toIso8601String();
     _db.execute(
       'UPDATE products SET stock_qty = ROUND(stock_qty + ?, 4), updated_at = ? WHERE id = ?',
-      [delta, DateTime.now().toIso8601String(), productId],
+      [delta, at, productId],
     );
     _db.execute(
-      'INSERT INTO stock_movements (id, product_id, delta, type, ref_id, created_at) VALUES (?,?,?,?,?,?)',
-      [newId(), productId, delta, type, ref, DateTime.now().toIso8601String()],
+      'INSERT INTO stock_movements (id, product_id, delta, type, ref_id, created_at, note, user_id) VALUES (?,?,?,?,?,?,?,?)',
+      [newId(), productId, delta, type, ref, at, note, userId],
     );
   }
 
-  void _transaction(void Function() body) {
+  /// Runs [body] so that all its writes are saved together or not at all.
+  void transaction(void Function() body) {
+    // Already inside a transaction: the outer one commits or rolls back.
+    if (!_db.autocommit) {
+      body();
+      return;
+    }
     _db.execute('BEGIN');
     try {
       body();
@@ -252,4 +375,17 @@ VALUES (?,?,?,?,?,?,?,?,?,?)''');
 
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
+}
+
+class StockMovement {
+  StockMovement({
+    required this.delta,
+    required this.type,
+    required this.note,
+    required this.at,
+  });
+  final double delta;
+  final String type;
+  final String note;
+  final DateTime at;
 }
